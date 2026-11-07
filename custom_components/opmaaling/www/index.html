@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.6.8';
+const APP_VERSION = '0.6.9';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1317,7 +1317,7 @@ function sagCard(s) {
     <div style="text-align:right;flex:none"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
     <div><b>${t.g}</b> <span class="muted">glas</span></div>${t.d ? `<div><b>${t.d}</b> <span class="muted">${t.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`;
 }
-const matchSag = (s, q) => !q || [s.nr, s.navn, ...(s.adresser || []).map(a => a.adresse)].join(' ').toLowerCase().includes(q.toLowerCase());
+const matchSag = (s, q) => !q || [s.nr, s.navn, s.lev, ...(s.adresser || []).map(a => a.adresse)].join(' ').toLowerCase().includes(q.toLowerCase());
 function sagListe(list, emptyHTML, from) {
   const draw = q => {
     const f = list.filter(s => matchSag(s, q));
@@ -1341,9 +1341,15 @@ function renderHome() {
   $('#main').insertAdjacentHTML('beforeend', `<div class="muted" style="text-align:center;font-size:12px;margin-top:24px">Version ${APP_VERSION}</div>`);
   $('#fabWrap').innerHTML = `<button class="btn fab" id="newSag">+ Ny sag</button>`;
   $('#newSag').onclick = async () => {
-    const r = await formDialog('Ny sag', [['Sagsnummer', '', 'Fx 2026-114', 'numeric'], ['Kunde / beskrivelse (valgfri)', '', 'Fx Jensen']], 'Opret');
-    if (!r || !r[0]) { if (r) toast('Skriv et sagsnummer'); return; }
-    const s = { id: uid(), nr: r[0], navn: r[1], oprettet: Date.now(), updated: Date.now(), adresser: [], pos: [] };
+    // sagsnummer og levering skal udfyldes – dialogen kommer igen med det, der allerede er skrevet
+    let r = ['', '', ''];
+    for (;;) {
+      r = await formDialog('Ny sag', [['Sagsnummer', r[0], 'Fx 2026-114', 'numeric'], ['Kunde / beskrivelse (valgfri)', r[1], 'Fx Jensen'], ['Hvor skal det leveres?', r[2], 'Fx Strandvejen 12, 5000 Odense']], 'Opret');
+      if (!r) return;
+      if (r[0] && r[2]) break;
+      toast(!r[0] ? 'Skriv et sagsnummer' : 'Skriv hvor det skal leveres');
+    }
+    const s = { id: uid(), nr: r[0], navn: r[1], lev: r[2], oprettet: Date.now(), updated: Date.now(), adresser: [], pos: [] };
     data.sager.push(s); save(); view = { name: 'sag', sagId: s.id, from: 'home' }; render();
     addAdresse(s);
   };
@@ -1374,7 +1380,8 @@ function renderSag() {
   $('#main').innerHTML = syncBarHTML() +
     (s.arkiveret ? `<div class="warn" style="display:flex;align-items:center;gap:10px"><span class="grow">Arkiveret ${fmtDato(s.arkiveretDato)}</span><button class="btn small" id="reopen" style="width:auto;padding:8px 14px">Genåbn</button></div>` : '') +
     `<div class="card row" style="padding:10px 12px"><div class="grow"><div class="muted" style="font-size:13px">Sagsnummer</div>
-      <div class="title" style="font-size:19px">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted">${esc(s.navn)}</div>` : ''}</div>
+      <div class="title" style="font-size:19px">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted">${esc(s.navn)}</div>` : ''}
+      <div style="font-size:14px;margin-top:4px">🚚 Leveres: ${s.lev ? esc(s.lev) : '<span style="color:#c0392b">ikke angivet – tryk Ret</span>'}</div></div>
       <button class="btn sec small" id="retSag" style="width:auto;padding:10px 16px">✏️ Ret</button></div>` + `
     <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
     <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div><div class="card"><b>${t.d}</b><span class="muted">døre i alt</span></div></div>
@@ -1454,11 +1461,11 @@ function menuSheet(title, items) {
   bg.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { close(); items[+b.dataset.i][0](); });
 }
 async function retSag(s) {
-  const r = await formDialog('Ret sag', [['Sagsnummer', s.nr || '', ''], ['Kunde / beskrivelse', s.navn || '', '']], 'Gem');
+  const r = await formDialog('Ret sag', [['Sagsnummer', s.nr || '', ''], ['Kunde / beskrivelse', s.navn || '', ''], ['Hvor skal det leveres?', s.lev || '', 'Fx Strandvejen 12, 5000 Odense']], 'Gem');
   if (!r) return;
   if (!r[0]) { toast('Sagsnummer må ikke være tomt'); return; }
   if (liveSager().some(x => x.id !== s.id && x.nr === r[0]) && !(await dialog({ text: `Sagsnummer ${r[0]} findes allerede på en anden sag. Vil du bruge det alligevel?`, ok: 'Ja' }))) return;
-  s.nr = r[0]; s.navn = r[1]; touch(s); save(); render(); toast('Sagen er rettet');
+  s.nr = r[0]; s.navn = r[1]; s.lev = r[2]; touch(s); save(); render(); toast('Sagen er rettet');
 }
 function sagMenu(s) {
   menuSheet(sagLabel(s), [
@@ -2003,7 +2010,7 @@ function cropEditor(src, crop) {
 function listText(s, only) {
   const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harVentil(p) ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
-  let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
+  let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
   const vent = list => list.filter(harVentil).reduce((n, p) => n + (p.antal || 0), 0);
   const raa = list => list.filter(p => p.raa).reduce((n, p) => n + (p.antal || 0), 0);
@@ -2073,6 +2080,7 @@ async function makePDF(s, only, navn) {
   doc.text(`Dato: ${new Date().toLocaleDateString('da-DK')}`, PW - M, 12, { align: 'right' });
   y = 36;
   text(only ? `Adresse: ${only.adresse}` : `${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}`, M, 11, 'bold');
+  if (s.lev) { y += 6; text(`Leveres: ${s.lev}`, M, 11, 'bold'); }
   y += 6; text(`I alt: ${antalTxt(t)}. Mål i mm, bredde × højde.`, M, 10);
   y += 8;
   for (const a of adrs) {

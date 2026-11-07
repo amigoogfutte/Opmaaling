@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.2';
+const APP_VERSION = '0.4.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -345,7 +345,7 @@ const inFr = (fr, [fx, fy]) => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <
 const isFast = (L, fr) => (L.fast || []).some(q => inFr(fr, q));
 // Åbningsmåde pr. ramme: sidehængt (hængsel v/h, bremse, 180°), tophængt, vendevindue
 const openAt = (L, fr) => (L.open || []).find(o => inFr(fr, o.pt));
-const AABNING = { side: 'Sidehængt', top: 'Tophængt', vende: 'Vendevindue', d180: '180° (vendbar om lodret akse)' };
+const AABNING = { side: 'Sidehængt', top: 'Tophængt', topstyret: 'Topstyret', vende: 'Vendevindue', d180: '180° (vendbar om lodret akse)' };
 const openTxt = o => !o ? '' : o.type === 'side'
   ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''})` : (AABNING[o.type] || '');
 const aabningLines = p => {
@@ -563,6 +563,9 @@ function plainDrawing(p, maxSide) {
       // linjerne går fra hængselsiden og mødes i siden med grebet
       if (o && o.type === 'side') { const hx = o.hinge === 'h' ? rx1 : rx0, ox = o.hinge === 'h' ? rx0 : rx1; ln(hx, ry0, ox, my); ln(hx, ry1, ox, my); }
       if (o && o.type === 'top') { ln(rx0, ry0, mx, ry1); ln(rx1, ry0, mx, ry1); }
+      if (o && o.type === 'topstyret') {   // som tophængt, men linjerne starter ca. 10 cm nede på rammen
+        const d = Math.min(100 * h / (+p.h || 1200), (ry1 - ry0) * 0.25);
+        ln(rx0, ry0 + d, mx, ry1); ln(rx1, ry0 + d, mx, ry1); }
       if (o && o.type === 'vende') {   // vandret akse: stiplet ned, fuldt optrukket op
         x.setLineDash([lw * 6, lw * 2, lw, lw * 2]); ln(rx0 - gap, my, rx1 + gap, my);
         x.setLineDash([lw * 4, lw * 3]); ln(rx0, my, mx, ry1); ln(rx1, my, mx, ry1);
@@ -663,7 +666,7 @@ function linesEditor(p, fu) {
         <div style="font-size:12px;color:#bbb;margin-bottom:4px">Åbning for valgte ramme(r)</div>
         <div class="chips" id="lOpen" style="margin:0 0 6px">
           <button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
-          <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="vende">Vendevindue</button><button type="button" class="chip" data-o="d180">180°</button>
+          <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="topstyret">Topstyret</button><button type="button" class="chip" data-o="vende">Vendevindue</button><button type="button" class="chip" data-o="d180">180°</button>
           <button type="button" class="chip" data-o="ingen">Ingen</button></div>
         <div id="lSideOpts" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <div class="seg" id="lHinge" style="flex:1 1 220px"><button type="button" data-h="v">Hængsel venstre</button><button type="button" data-h="h">Hængsel højre</button></div>
@@ -699,7 +702,7 @@ function linesEditor(p, fu) {
       box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
       for (const fr of fracFields(L)) {
         const o = openAt(L, fr), fast = isFast(L, fr); if (!fast && !o) continue;
-        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'd180' ? '180°' : 'VENDEVINDUE';
+        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'topstyret' ? 'TOPSTYRET' : o.type === 'd180' ? '180°' : 'VENDEVINDUE';
         const el = document.createElement('div'); el.className = 'fsel';
         el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none`;
         el.innerHTML = `<span style="background:#ffcc00;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-bottom:8px;text-align:center">${txt}</span>`;

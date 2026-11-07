@@ -76,6 +76,12 @@
   .check input { width: 26px; height: 26px; margin: 0; accent-color: var(--blue); }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
   .tag.raa { background: #ece8fb; color: #4c3a99; }
+  .raasel { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #cfd5dd; border-radius: 10px;
+    padding: 8px 12px; margin-top: 8px; cursor: pointer; min-height: 56px; }
+  .raasel img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: none; }
+  .raasel .nm { flex: 1; font-weight: 600; }
+  .raasel .chg { color: var(--blue); font-size: 15px; }
+  .raasel.empty { justify-content: center; color: var(--blue); font-weight: 600; font-size: 17px; background: #e6eef8; border-color: transparent; }
   .raagrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
   .raatile { background: #fff; border: 2px solid #dfe3e8; border-radius: 12px; padding: 5px; text-align: center; cursor: pointer;
     font-size: 12.5px; line-height: 1.2; color: var(--text); display: flex; flex-direction: column; gap: 4px; }
@@ -510,8 +516,9 @@ function editPos(s, existing) {
     <div class="stepper"><button id="eMinus" type="button">−</button><input inputmode="numeric" id="eAnt" value="${esc(p.antal)}"><button id="ePlus" type="button">+</button></div>
     <label class="check"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
     <label class="check"><input type="checkbox" id="eRaa" ${p.raa ? 'checked' : ''}> Råglas</label>
-    <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}"><label class="f">Vælg type råglas</label>
-      <div class="raagrid" id="eRaaGrid">${raaTiles(p.raaType)}</div>
+    <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}">
+      <div class="raasel" id="eRaaSel"></div>
+      <div class="raagrid hidden" id="eRaaGrid">${raaTiles(p.raaType)}</div>
       <div id="eRaaOther" class="${p.raaType && !RAAGLAS.includes(p.raaType) ? '' : 'hidden'}"><label class="f">Anden type</label>
       <input type="text" id="eRaaType" value="${esc(p.raaType && !RAAGLAS.includes(p.raaType) ? p.raaType : '')}" placeholder="Skriv typen"></div></div>
     <label class="f">Billede</label>
@@ -611,14 +618,32 @@ function editPos(s, existing) {
     bg.querySelector('#eRaaWrap').classList.toggle('hidden', !e.target.checked);
     redraw();
   });
+  const raaGrid = bg.querySelector('#eRaaGrid'), raaSelEl = bg.querySelector('#eRaaSel');
+  const updRaaSel = () => {
+    const open = !raaGrid.classList.contains('hidden');
+    if (!raaSel) {
+      raaSelEl.className = 'raasel empty';
+      raaSelEl.textContent = open ? 'Luk' : 'Vælg type råglas';
+    } else if (raaSel === '__andet') {
+      raaSelEl.className = 'raasel';
+      raaSelEl.innerHTML = `<span class="nm">Anden type</span><span class="chg">${open ? 'Luk' : 'Skift'}</span>`;
+    } else {
+      raaSelEl.className = 'raasel';
+      raaSelEl.innerHTML = `<img src="${raaImg(raaSel)}" alt="" onerror="this.remove()"><span class="nm">${esc(raaSel)}</span><span class="chg">${open ? 'Luk' : 'Skift'}</span>`;
+    }
+  };
+  raaSelEl.onclick = () => { raaGrid.classList.toggle('hidden'); updRaaSel(); };
   bg.querySelectorAll('#eRaaGrid .raatile').forEach(t => t.onclick = () => {
     raaSel = t.dataset.raa;
     bg.querySelectorAll('#eRaaGrid .raatile').forEach(x => x.classList.toggle('on', x === t));
     const other = raaSel === '__andet';
     bg.querySelector('#eRaaOther').classList.toggle('hidden', !other);
-    if (other) setTimeout(() => bg.querySelector('#eRaaType').focus(), 50);
+    raaGrid.classList.add('hidden'); updRaaSel();
+    raaSelEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (other) setTimeout(() => bg.querySelector('#eRaaType').focus(), 300);
     redraw();
   });
+  updRaaSel();
   setType(p.type); updPhotoUI();
   if (isNew) setTimeout(() => bg.querySelector('#eRum').focus(), 300);
 }

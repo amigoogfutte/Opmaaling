@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.6.3';
+const APP_VERSION = '0.6.4';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -390,12 +390,21 @@ function normLines(L) {
   const fast = (L && Array.isArray(L.fast) ? L.fast : []).filter(q => Array.isArray(q) && q.length === 2).map(([a, b]) => [+a, +b]);
   const open = (L && Array.isArray(L.open) ? L.open : []).filter(o => o && Array.isArray(o.pt))
     .map(o => ({ pt: [+o.pt[0], +o.pt[1]], type: o.type, hinge: o.hinge === 'h' ? 'h' : 'v', brems: !!o.brems, d180: !!o.d180 }));
-  const fyld = (L && Array.isArray(L.fyld) ? L.fyld : []).filter(o => o && Array.isArray(o.pt) && FYLD[o.t]).map(o => ({ pt: [+o.pt[0], +o.pt[1]], t: o.t }));
+  const fyld = (L && Array.isArray(L.fyld) ? L.fyld : []).filter(o => o && Array.isArray(o.pt) && FYLD[o.t]).map(o => ({ pt: [+o.pt[0], +o.pt[1]], t: o.t, ...(Array.isArray(o.cell) ? { cell: [+o.cell[0], +o.cell[1]] } : {}) }));
   return { v: f(L && L.v), h: f(L && L.h), fast, open, fyld };
 }
 // Fyldninger: glas (standard), friseret fyldning, glat plade eller plade med spor
 const FYLD = { glas: 'Glas', friseret: 'Friseret fyldning', glat: 'Glat pladefyldning', spor: 'Pladefyldning med spor' };
-const fyldAt = (L, fr) => { const o = (L.fyld || []).find(o2 => inFr(fr, o2.pt)); return o ? o.t : null; };
+const fyldAt = (L, fr) => { const o = (L.fyld || []).find(o2 => inFr(fr, o2.pt) && !o2.cell); return o ? o.t : null; };
+// Glasfelter adskilt af sprosser: celle [i, j] = antal lodrette/vandrette sprosser til venstre for/over punktet
+const sprSorted = (L, k, fr) => sprIn(L, k, fr).map(l => l.p).sort((a, b) => a - b);
+const cellOf = (L, fr, fx, fy) => { const vs = sprSorted(L, 'v', fr), hs = sprSorted(L, 'h', fr);
+  return vs.length || hs.length ? [vs.filter(v => v < fx).length, hs.filter(v => v < fy).length] : null; };
+const cellRect = (L, fr, c) => { const vs = [fr[0], ...sprSorted(L, 'v', fr), fr[1]], hs = [fr[2], ...sprSorted(L, 'h', fr), fr[3]];
+  return [vs[c[0]], vs[c[0] + 1], hs[c[1]], hs[c[1] + 1]]; };
+// fyldning for én celle (cellevalg vinder over valg for hele feltet)
+const fyldCell = (L, fr, c) => { const ff = (L.fyld || []).filter(o => inFr(fr, o.pt));
+  const hit = c && ff.find(o => o.cell && o.cell[0] === c[0] && o.cell[1] === c[1]); return hit ? hit.t : (ff.find(o => !o.cell) || {}).t || null; };
 // dørens fyldning (gælder alle dørblade/fløje), ældre data: dGlas
 const dFyldOf = p => FYLD[p.dFyld] ? p.dFyld : ((dKind(p) === 'hoved' ? !!p.dGlas : p.dGlas !== false) ? 'glas' : 'friseret');
 const dFyldTxt = p => ({ glas: 'med glas', friseret: 'friseret fyldning', glat: 'glat pladefyldning', spor: 'pladefyldning med spor' })[dFyldOf(p)];
@@ -443,9 +452,14 @@ const fyldLines = p => {
   if (p.type === 'glas') return [];
   const L = normLines(p.lines); if (!L.fyld.length) return [];
   const frs = fracFields(L), grp = new Map(), ord = p.type === 'dor' ? 'Felt' : 'Ramme';
-  frs.forEach((fr, i) => { const t = fyldAt(L, fr); if (t && t !== 'glas') { if (!grp.has(t)) grp.set(t, []); grp.get(t).push(i + 1); } });
+  frs.forEach((fr, i) => {
+    const nv = sprSorted(L, 'v', fr).length + 1, nh = sprSorted(L, 'h', fr).length + 1, tael = new Map();
+    for (let ci = 0; ci < nv; ci++) for (let cj = 0; cj < nh; cj++) { const t = fyldCell(L, fr, nv * nh > 1 ? [ci, cj] : null); if (t && t !== 'glas') tael.set(t, (tael.get(t) || 0) + 1); }
+    for (const [t, k] of tael) { const key = k === nv * nh ? t : `${t}|${k}|${nv * nh}`; if (!grp.has(key)) grp.set(key, []); grp.get(key).push(i + 1); }
+  });
   const nr = a2 => a2.length > 1 ? a2.slice(0, -1).join(', ') + ' og ' + a2[a2.length - 1] : String(a2[0]);
-  return [...grp].map(([t, a2]) => frs.length === 1 ? FYLD[t] : `${ord} ${nr(a2)}: ${FYLD[t]}`);
+  const navn = key => { const [t, k, n] = key.split('|'); return k ? `${FYLD[t]} i ${k} af ${n} glasfelter` : FYLD[t]; };
+  return [...grp].map(([t, a2]) => frs.length === 1 ? navn(t) : `${ord} ${nr(a2)}: ${navn(t)}`);
 };
 const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
 const fastTxt = p => { if (aabningLines(p).length) return ''; const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
@@ -457,7 +471,7 @@ const packLines = L => {
   const pk = arr => arr.slice().sort((x, y) => x.p - y.p || x.a - y.a).map(l => ({
     p: r3(l.p), t: l.t, ...(isPartial(l) ? { a: r3(l.a), b: r3(l.b) } : {}), ...(l.mm ? { mm: l.mm, fra: l.fra || 'start' } : {}) }));
   const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]);
-  if (L.fyld && L.fyld.length) out.fyld = L.fyld.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], t: o.t }));
+  if (L.fyld && L.fyld.length) out.fyld = L.fyld.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], t: o.t, ...(o.cell ? { cell: o.cell } : {}) }));
   if (L.open && L.open.length) out.open = L.open.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], type: o.type, hinge: o.hinge, brems: o.brems || undefined }));
   return out;
 };
@@ -689,8 +703,8 @@ function plainDrawing(p, maxSide) {
         x.save(); x.fillStyle = '#c0392b'; x.font = `700 ${Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.07)}px -apple-system, Helvetica, Arial, sans-serif`;
         x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText(p.dRetn === 'ud' ? 'UDAD' : 'INDAD', (rx0 + rx1) / 2, ry1 - 3); x.restore();
       };
-      const lf = fyldAt(L, fr) || dFyldOf(p);
-      if (lf !== 'glas') {
+      const lf = fyldAt(L, fr) || dFyldOf(p), celle = (L.fyld || []).some(o => o.cell && inFr(fr, o.pt));
+      if (lf !== 'glas' && !celle) {
         // dørblad med fyldning (friseret, glat eller med spor)
         tegnFyld(x, lf, gx0, gx1, gy0, gy1, lw);
         drawLeaf(); nrDoer(); continue;
@@ -698,8 +712,8 @@ function plainDrawing(p, maxSide) {
       setTimeout(() => {}, 0);
       x._drawLeafAfter = drawLeaf;
     }
-    const gw = gx1 - gx0, gh = gy1 - gy0, fyF = glas ? null : fyldAt(L, fr);
-    if (fyF && fyF !== 'glas') tegnFyld(x, fyF, gx0, gx1, gy0, gy1, lw);
+    const gw = gx1 - gx0, gh = gy1 - gy0, fyF = glas ? null : fyldAt(L, fr), harCelleFyld = !glas && (L.fyld || []).some(o => o.cell && inFr(fr, o.pt));
+    if (fyF && fyF !== 'glas' && !harCelleFyld) tegnFyld(x, fyF, gx0, gx1, gy0, gy1, lw);
     else {
       x.fillStyle = GLAS; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
       x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.8; x.beginPath();
@@ -720,6 +734,15 @@ function plainDrawing(p, maxSide) {
       const mapX = v => v * w, mapY = v => v * h;   // præcis placering i forhold til hele vinduet
       vs.forEach(l => spr.push({ o: 'v', c: mapX(l.p), s: l.a <= fr[2] + 0.004 ? gy0 : mapY(l.a), e: l.b >= fr[3] - 0.004 ? gy1 : mapY(l.b) }));
       hs.forEach(l => spr.push({ o: 'h', c: mapY(l.p), s: l.a <= fr[0] + 0.004 ? gx0 : mapX(l.a), e: l.b >= fr[1] - 0.004 ? gx1 : mapX(l.b) }));
+    }
+    // fyldninger pr. glasfelt (felterne mellem sprosserne)
+    if (harCelleFyld) {
+      const xs = [gx0, ...spr.filter(q => q.o === 'v').map(q => q.c).sort((a, b) => a - b), gx1], ys = [gy0, ...spr.filter(q => q.o === 'h').map(q => q.c).sort((a, b) => a - b), gy1];
+      for (let ci = 0; ci < xs.length - 1; ci++) for (let cj = 0; cj < ys.length - 1; cj++) {
+        const t = fyldCell(L, fr, [ci, cj]); if (!t || t === 'glas') continue;
+        const a = xs[ci] + (ci ? ts / 2 : 0), b2 = xs[ci + 1] - (ci < xs.length - 2 ? ts / 2 : 0), c2 = ys[cj] + (cj ? ts / 2 : 0), d2 = ys[cj + 1] - (cj < ys.length - 2 ? ts / 2 : 0);
+        if (b2 - a > 3 && d2 - c2 > 3) tegnFyld(x, t, a, b2, c2, d2, lw);
+      }
     }
     x.fillStyle = RAMME;
     for (const s of spr) {
@@ -844,7 +867,7 @@ function linesEditor(p, fu) {
           : `<button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
           <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="topstyret">Topstyret</button><button type="button" class="chip" data-o="vende">Vendevindue</button><button type="button" class="chip" data-o="d180">180°</button>
           <button type="button" class="chip" data-o="ingen">Ingen</button>`}</div>
-        <div style="font-size:12px;color:#bbb;margin:2px 0 4px">Fyldning i valgte felt(er)</div>
+        <div style="font-size:12px;color:#bbb;margin:2px 0 4px">Fyldning i valgte glasfelt(er) – tryk på et felt mellem sprosserne</div>
         <div class="chips" id="lFyld" style="margin:0 0 6px">${Object.entries(FYLD).map(([k, v]) => `<button type="button" class="chip" data-f="${k}">${v}</button>`).join('')}</div>
         <div id="lSideOpts" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <div class="seg" id="lHinge" style="flex:1 1 220px"><button type="button" data-h="v">Hængsel venstre</button><button type="button" data-h="h">Hængsel højre</button></div>
@@ -879,12 +902,16 @@ function linesEditor(p, fu) {
     function draw() {
       box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
       for (const fr of fracFields(L)) {
-        const o = openAt(L, fr), fast = isFast(L, fr), fy = fyldAt(L, fr);
-        if (fy && fy !== 'glas') {   // fyldning: brunlig baggrund og navn øverst i feltet
-          const ef = document.createElement('div'); ef.className = 'fsel';
-          ef.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;background:rgba(200,170,120,.35);display:flex;align-items:flex-start;justify-content:center;pointer-events:none`;
-          ef.innerHTML = `<span style="background:#c8aa78;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-top:8px;text-align:center">${FYLD[fy].toUpperCase()}</span>`;
-          box.appendChild(ef);
+        const o = openAt(L, fr), fast = isFast(L, fr);
+        {   // fyldning: brunlig baggrund og navn øverst i hvert glasfelt
+          const nv = sprSorted(L, 'v', fr).length + 1, nh = sprSorted(L, 'h', fr).length + 1;
+          for (let ci = 0; ci < nv; ci++) for (let cj = 0; cj < nh; cj++) {
+            const c = nv * nh > 1 ? [ci, cj] : null, fy = fyldCell(L, fr, c); if (!fy || fy === 'glas') continue;
+            const r2 = c ? cellRect(L, fr, c) : fr, ef = document.createElement('div'); ef.className = 'fsel';
+            ef.style.cssText = `position:absolute;left:${r2[0] * W}px;top:${r2[2] * H}px;width:${(r2[1] - r2[0]) * W}px;height:${(r2[3] - r2[2]) * H}px;background:rgba(200,170,120,.45);display:flex;align-items:flex-start;justify-content:center;overflow:hidden;pointer-events:none`;
+            ef.innerHTML = `<span style="background:#c8aa78;color:#111;font-weight:700;font-size:10px;padding:1px 4px;border-radius:5px;margin-top:4px;text-align:center">${{ friseret: 'FRISERET', glat: 'GLAT', spor: 'SPOR' }[fy]}</span>`;
+            box.appendChild(ef);
+          }
         }
         if (!fast && !o) continue;
         const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'topstyret' ? 'TOPSTYRET' : o.type === 'd180' ? '180°' : o.type === 'dor' ? `DØR – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}` : o.type === 'sideparti' ? 'FAST SIDEPARTI' : 'VENDEVINDUE';
@@ -893,7 +920,8 @@ function linesEditor(p, fu) {
         el.innerHTML = `<span style="background:#ffcc00;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-bottom:8px;text-align:center">${txt}</span>`;
         box.appendChild(el);
       }
-      for (const fr of selFields()) {
+      for (const [fx, fy] of selF) {
+        const fr0 = fieldAt(fx, fy); if (!fr0) continue; const c = cellOf(L, fr0, fx, fy), fr = c ? cellRect(L, fr0, c) : fr0;
         const el = document.createElement('div'); el.className = 'fsel';
         el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;background:rgba(79,195,255,.22);outline:2px dashed #4fc3ff;outline-offset:-4px;pointer-events:none`;
         box.appendChild(el);
@@ -931,7 +959,7 @@ function linesEditor(p, fu) {
         const typer = frs.map(fr => isFast(L, fr) ? 'fast' : (openAt(L, fr) || {}).type || 'ingen');
         const fælles = typer.every(t2 => t2 === typer[0]) ? typer[0] : null;
         bg.querySelectorAll('#lOpen .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.o === fælles));
-        const fy = frs.map(fr => fyldAt(L, fr) || 'glas'), fyF = fy.every(t2 => t2 === fy[0]) ? fy[0] : null;
+        const fy = selF.map(([fx, fy2]) => { const fr = fieldAt(fx, fy2); return (fr && fyldCell(L, fr, cellOf(L, fr, fx, fy2))) || 'glas'; }), fyF = fy.every(t2 => t2 === fy[0]) ? fy[0] : null;
         bg.querySelectorAll('#lFyld .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.f === fyF));
         const sider = frs.map(fr => openAt(L, fr)).filter(o => o && (o.type === 'side' || o.type === 'dor') && !isFast(L, frs.find(f2 => inFr(f2, o.pt))));
         bg.querySelector('#lSideOpts').classList.toggle('hidden', !sider.length);
@@ -993,9 +1021,10 @@ function linesEditor(p, fu) {
       if (tryk && tryk.felt) {
         const [fx, fy] = tryk.felt, fr = fieldAt(fx, fy); sel.clear();
         if (fr) {
-          const valgt = selF.some(([x2, y2]) => sameFr(fieldAt(x2, y2), fr));
-          if (flere()) { if (valgt) selF = selF.filter(([x2, y2]) => !sameFr(fieldAt(x2, y2), fr)); else selF.push([fx, fy]); }
-          else selF = valgt && selFields().length === 1 ? [] : [[fx, fy]];
+          const c0 = cellOf(L, fr, fx, fy), samme = ([x2, y2]) => { const f2 = fieldAt(x2, y2); if (!sameFr(f2, fr)) return false; const c2 = cellOf(L, f2, x2, y2); return !c0 || (c2 && c2[0] === c0[0] && c2[1] === c0[1]); };
+          const valgt = selF.some(samme);
+          if (flere()) { if (valgt) selF = selF.filter(q => !samme(q)); else selF.push([fx, fy]); }
+          else selF = valgt && selF.length === 1 ? [] : [[fx, fy]];
         }
         draw();
       } else if (drag && !drag.moved) {
@@ -1085,9 +1114,21 @@ function linesEditor(p, fu) {
       draw();
     });
     bg.querySelectorAll('#lFyld .chip').forEach(c2 => c2.onclick = () => {
-      const frs = selFields(); if (!frs.length) return; const t2 = c2.dataset.f;
-      L.fyld = (L.fyld || []).filter(o => !frs.some(fr => inFr(fr, o.pt)));
-      if (t2 !== 'glas') for (const fr of frs) L.fyld.push({ pt: [r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)], t: t2 });
+      if (!selF.length) return; const t2 = c2.dataset.f; L.fyld = L.fyld || [];
+      for (const [fx, fy] of selF) {
+        const fr = fieldAt(fx, fy); if (!fr) continue; const c = cellOf(L, fr, fx, fy);
+        if (!c) L.fyld = L.fyld.filter(o => !inFr(fr, o.pt));   // hele feltet
+        else {
+          const hel = L.fyld.find(o => inFr(fr, o.pt) && !o.cell);
+          if (hel) {   // feltet havde én fyldning for det hele: del den ud på alle celler først
+            L.fyld = L.fyld.filter(o => o !== hel);
+            const nv = sprSorted(L, 'v', fr).length + 1, nh = sprSorted(L, 'h', fr).length + 1;
+            for (let ci = 0; ci < nv; ci++) for (let cj = 0; cj < nh; cj++) { const r2 = cellRect(L, fr, [ci, cj]); L.fyld.push({ pt: [r3((r2[0] + r2[1]) / 2), r3((r2[2] + r2[3]) / 2)], t: hel.t, cell: [ci, cj] }); }
+          }
+          L.fyld = L.fyld.filter(o => !(inFr(fr, o.pt) && o.cell && o.cell[0] === c[0] && o.cell[1] === c[1]));
+        }
+        if (t2 !== 'glas') { const r2 = c ? cellRect(L, fr, c) : fr; L.fyld.push({ pt: [r3((r2[0] + r2[1]) / 2), r3((r2[2] + r2[3]) / 2)], t: t2, ...(c ? { cell: c } : {}) }); }
+      }
       draw();
     });
     const sideSet = fn => { for (const fr of selFields()) { const o = openAt(L, fr); if (o && (o.type === 'side' || o.type === 'dor')) fn(o); } draw(); };

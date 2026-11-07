@@ -134,7 +134,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.4';
+const APP_VERSION = '0.5.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -249,6 +249,23 @@ const DORTYPE = { hoved: 'Hoveddør', terrasse: 'Terrassedør', skyde: 'Skydedø
 const dKind = p => DORTYPE[p.dKind] ? p.dKind : 'hoved';
 const typeNavn = p => p.type === 'dor' ? DORTYPE[dKind(p)] : (TYPENAVN[p.type] || 'Vindue');
 const flojeAntal = p => Math.min(8, Math.max(3, parseInt(p.dFloj, 10) || 3));
+// Foldedør: grupper af fløje og evt. en almindelig dør i den ene side
+// dFoldDel: 'en' (alle til én side) | 'midt' (delt på midten); dFoldSide: 'v' | 'h' = siden fløjene foldes mod
+function foldPlan(p) {
+  const n = flojeAntal(p), side = p.dFoldSide === 'h' ? 'h' : 'v';
+  if (p.dFoldDel === 'midt') { const venstre = Math.ceil(n / 2); return { n, grupper: [{ fra: 0, til: venstre, mod: 'v' }, { fra: venstre, til: n, mod: 'h' }], dor: null }; }
+  if (n % 2 === 0) {   // lige antal: en dør i den ene side, resten foldes mod den anden
+    return side === 'v' ? { n, grupper: [{ fra: 0, til: n - 1, mod: 'v' }], dor: { i: n - 1, hinge: 'h' } }
+                        : { n, grupper: [{ fra: 1, til: n, mod: 'h' }], dor: { i: 0, hinge: 'v' } };
+  }
+  return { n, grupper: [{ fra: 0, til: n, mod: side }], dor: null };
+}
+const foldTxt = p => {
+  const f = foldPlan(p), sideNavn = s2 => s2 === 'h' ? 'højre' : 'venstre';
+  if (p.dFoldDel === 'midt') return `delt på midten (${f.grupper[0].til - f.grupper[0].fra} fløje mod venstre, ${f.grupper[1].til - f.grupper[1].fra} mod højre)`;
+  const g = f.grupper[0], antal = g.til - g.fra;
+  return f.dor ? `1 dør i ${sideNavn(f.dor.hinge)} side, ${antal} fløje foldes mod ${sideNavn(g.mod)}` : `alle fløje foldes mod ${sideNavn(g.mod)}`;
+};
 // Dørens felter: hvilke felter er dørblade, og hvilke er fast sideparti
 function dorLeaves(p, L, frs) {
   const k = dKind(p); if (k === 'skyde' || k === 'folde') return frs.map(() => null);
@@ -264,7 +281,7 @@ const dorTxt = p => {
   if (p.type !== 'dor') return '';
   const k = dKind(p), L = normLines(p.lines), flere = fracFields(L).length > 1;
   if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
-  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
+  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, foldTxt(p), p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
   const laas = [p.dLaas ? 'lås' : '', p.dSuppl ? 'suppleringslås' : ''].filter(Boolean);
   return [flere ? '' : `Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad',
     p.dGlas ? 'med glas' : 'uden glas', laas.length ? 'med ' + laas.join(' og ') : ''].filter(Boolean).join(', ');
@@ -548,13 +565,30 @@ function plainDrawing(p, maxSide) {
       x.fillStyle = '#7a8aa3'; x.fillText('FAST', venstre ? (ix0 + mid) / 2 : (mid + ix1) / 2, iy1 - rw * 1.2 - Math.max(14, (iy1 - iy0) * 0.08));
     } else {
       // foldedør: n fløje; zigzag-linjen viser foldningen
-      const n = flojeAntal(p), pw = iw / n;
+      const plan = foldPlan(p), n = plan.n, pw = iw / n;
       x.restore();
       for (let i = 0; i < n; i++) panel(ix0 + i * pw + gap / 2, ix0 + (i + 1) * pw - gap / 2, iy0, iy1);
       x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.2; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
-      x.beginPath();
-      for (let i = 0; i <= n; i++) { const xx = ix0 + i * pw, yy = i % 2 === 0 ? iy0 + rw : iy1 - rw; i === 0 ? x.moveTo(xx, yy) : x.lineTo(xx, yy); }
-      x.stroke(); x.setLineDash([]);
+      // zigzag i hver gruppe: starter i den side, fløjene foldes mod
+      for (const g of plan.grupper) {
+        x.beginPath();
+        const idx = []; for (let i = g.fra; i <= g.til; i++) idx.push(i); if (g.mod === 'h') idx.reverse();
+        idx.forEach((i, j) => { const xx = ix0 + i * pw, yy = j % 2 === 0 ? iy0 + rw : iy1 - rw; j === 0 ? x.moveTo(xx, yy) : x.lineTo(xx, yy); });
+        x.stroke();
+      }
+      // almindelig dør i den ene side (lige antal fløje)
+      if (plan.dor) {
+        const a = ix0 + plan.dor.i * pw, b2 = a + pw, hx = plan.dor.hinge === 'h' ? b2 : a, ox = plan.dor.hinge === 'h' ? a : b2;
+        x.beginPath(); x.moveTo(hx, iy0 + rw); x.lineTo(ox, (iy0 + iy1) / 2); x.lineTo(hx, iy1 - rw); x.stroke();
+      }
+      x.setLineDash([]);
+      // pil(e) der viser foldningsretningen
+      x.fillStyle = '#c0392b';
+      for (const g of plan.grupper) {
+        const cx = ix0 + (g.fra + g.til) / 2 * pw, cy = iy0 + (iy1 - iy0) * 0.12, L2 = Math.min(pw * 0.6, iw * 0.08), dir = g.mod === 'h' ? 1 : -1, a2 = Math.max(5, L2 * 0.35);
+        x.beginPath(); x.moveTo(cx - dir * L2, cy); x.lineTo(cx + dir * L2, cy); x.stroke();
+        x.beginPath(); x.moveTo(cx + dir * L2, cy); x.lineTo(cx + dir * (L2 - a2), cy - a2 * 0.6); x.lineTo(cx + dir * (L2 - a2), cy + a2 * 0.6); x.closePath(); x.fill();
+      }
       x.fillStyle = '#c0392b'; x.font = `700 ${Math.max(9, Math.min(iw, iy1 - iy0) * 0.045)}px -apple-system, Helvetica, Arial, sans-serif`;
       x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText(`${n}-FLØJET · ${p.dRetn === 'ud' ? 'UDAD' : 'INDAD'}`, (ix0 + ix1) / 2, iy1 - 3);
     }
@@ -1080,7 +1114,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0, p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0, p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1359,6 +1393,10 @@ function editPos(s, a, existing) {
       <div id="eDSkydWrap"><div class="seg" id="eDSkyd"><button type="button" data-v="v">Venstregående</button><button type="button" data-v="h">Højregående</button></div></div>
       <div id="eDFlojWrap" style="display:flex;align-items:center;gap:10px;margin-top:8px"><span class="muted" style="flex:none">Antal fløje</span>
         <div class="seg" id="eDFloj" style="flex:1">${[3, 4, 5, 6, 7, 8].map(n => `<button type="button" data-v="${n}">${n}</button>`).join('')}</div></div>
+      <div id="eDFoldWrap">
+        <div class="seg" id="eDFoldDel" style="margin-top:8px"><button type="button" data-v="en">Alle til én side</button><button type="button" data-v="midt">Delt på midten</button></div>
+        <div class="seg" id="eDFoldSide" style="margin-top:8px"><button type="button" data-v="v">Foldes mod venstre</button><button type="button" data-v="h">Foldes mod højre</button></div>
+      </div>
       <div id="eDRetnWrap"><div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div></div>
       <label class="check"><input type="checkbox" id="eDGlas" ${p.dGlas ? 'checked' : ''}> Med glas</label>
       <div id="eDLaasWrap" style="display:flex;gap:8px">
@@ -1444,7 +1482,10 @@ function editPos(s, a, existing) {
     const k = dKind(p), vis = (id, on) => bg.querySelector(id).classList.toggle('hidden', !on);
     bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.k === k));
     vis('#eDHingeWrap', k === 'hoved' || k === 'terrasse'); vis('#eDRetnWrap', k !== 'skyde');
-    vis('#eDSkydWrap', k === 'skyde'); vis('#eDFlojWrap', k === 'folde'); vis('#eDLaasWrap', k === 'hoved');
+    vis('#eDSkydWrap', k === 'skyde'); vis('#eDFlojWrap', k === 'folde'); vis('#eDFoldWrap', k === 'folde');
+    bg.querySelector('#eDFoldSide').classList.toggle('hidden', p.dFoldDel === 'midt');
+    bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dFoldDel === 'midt' ? 'midt' : 'en')));
+    bg.querySelectorAll('#eDFoldSide button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dFoldSide === 'h' ? 'h' : 'v'))); vis('#eDLaasWrap', k === 'hoved');
     bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dHinge || 'v')));
     bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dRetn || 'ind')));
     bg.querySelectorAll('#eDSkyd button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dSkyd === 'h' ? 'h' : 'v')));
@@ -1457,6 +1498,8 @@ function editPos(s, a, existing) {
   bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.onclick = () => {
     p.dKind = c2.dataset.k; if (p.dKind !== 'hoved' && p.dGlas === undefined) p.dGlas = true;
     if (p.dKind === 'folde' && !p.dFloj) p.dFloj = 3; updDor(); redraw(); });
+  bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.onclick = () => { p.dFoldDel = b2.dataset.v; updDor(); redraw(); });
+  bg.querySelectorAll('#eDFoldSide button').forEach(b2 => b2.onclick = () => { p.dFoldSide = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDSkyd button').forEach(b2 => b2.onclick = () => { p.dSkyd = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDFloj button').forEach(b2 => b2.onclick = () => { p.dFloj = +b2.dataset.v; updDor(); redraw(); });
   bg.querySelector('#eDLaas').addEventListener('change', e => { p.dLaas = e.target.checked; redraw(); });

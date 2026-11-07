@@ -324,7 +324,31 @@ function edgeSketch(img, maxSide, crop) {
   x.putImageData(id, 0, 0);
   return c;
 }
-// Ren tegning af vinduet: karm, poster/sprosser og ruder – i forholdet bredde/højde
+// Linjer gemmes som { v: [{ p: 0.5, t: 'post' | 'sprosse' }], h: [...] } (ældre data: bare tal = post)
+function normLines(L) {
+  const f = arr => (arr || []).map(x => typeof x === 'number' ? { p: x, t: 'post' } : { p: +x.p, t: x.t === 'sprosse' ? 'sprosse' : 'post' });
+  return { v: f(L && L.v), h: f(L && L.h) };
+}
+// Symmetrisk: poster jævnt over hele vinduet, sprosser jævnt i hver ramme
+const isSym = p => p.sym !== undefined ? !!p.sym : !p.lines;
+function symLines(L) {
+  const out = { v: [], h: [] };
+  for (const k of ['v', 'h']) {
+    const np = L[k].filter(l => l.t === 'post').length, ns = L[k].filter(l => l.t === 'sprosse').length;
+    const posts = Array.from({ length: np }, (_, i) => (i + 1) / (np + 1));
+    const edges = [0, ...posts, 1], fields = np + 1, spr = [];
+    if (ns && ns % fields === 0) {
+      const per = ns / fields;
+      for (let f = 0; f < fields; f++) for (let j = 1; j <= per; j++) spr.push(edges[f] + (edges[f + 1] - edges[f]) * j / (per + 1));
+    } else for (let j = 1; j <= ns; j++) spr.push(j / (ns + 1));
+    out[k] = [...posts.map(p2 => ({ p: Math.round(p2 * 1000) / 1000, t: 'post' })), ...spr.map(p2 => ({ p: Math.round(p2 * 1000) / 1000, t: 'sprosse' }))];
+  }
+  return out;
+}
+const shownLines = p => isSym(p) ? symLines(normLines(p.lines)) : normLines(p.lines);
+const symTxt = p => { if (p.type === 'glas') return ''; const L = normLines(p.lines); if (!(L.v.length + L.h.length)) return ''; return isSym(p) ? 'Symmetrisk' : 'Asymmetrisk'; };
+
+// Ren tegning: karm, poster, rammer, glas og sprosser – i forholdet bredde/højde
 function plainDrawing(p, maxSide) {
   const B = +p.b || 1000, H = +p.h || 1200;
   const r = Math.max(0.25, Math.min(4, H / B));
@@ -332,30 +356,43 @@ function plainDrawing(p, maxSide) {
   if (h > maxSide) { h = maxSide; w = Math.round(maxSide / r); }
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
-  const lw = Math.max(2, maxSide / 160);
+  const m = Math.min(w, h), lw = Math.max(1.5, maxSide / 200);
   const glas = p.type === 'glas';
-  const f = glas ? 0 : Math.max(6, Math.min(w, h) * 0.06);    // karmbredde
-  const t = Math.max(5, Math.min(w, h) * 0.035);                // post/sprosse
-  x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
-  if (!glas) { x.fillStyle = '#e6ebf2'; x.fillRect(0, 0, w, h); }
-  const L = p.lines || { v: [], h: [] };
-  const cuts = (arr, len) => {
+  const L = shownLines(p);
+  if (glas) { L.v.forEach(l => l.t = 'sprosse'); L.h.forEach(l => l.t = 'sprosse'); }
+  const f = glas ? 0 : Math.max(6, m * 0.055);      // karm
+  const tp = Math.max(6, m * 0.05);                   // post
+  const rw = glas ? 0 : Math.max(5, m * 0.045);      // ramme
+  const ts = Math.max(3, m * 0.018);                  // sprosse
+  const gap = glas ? 0 : Math.max(1.5, m * 0.007);   // luft mellem karm/post og ramme
+  const KARM = '#dfe5ee', RAMME = '#f7f8fa', GLAS = p.raa ? '#e9ecf1' : '#eef6ff', LINE = '#2a3b55';
+  x.fillStyle = glas ? '#fff' : KARM; x.fillRect(0, 0, w, h);
+  x.lineWidth = lw; x.strokeStyle = LINE;
+  const cuts = (posts, len) => {
     const out = [[f, null]];
-    for (const pos of [...arr].sort((a, b) => a - b)) { const m = pos * len; out[out.length - 1][1] = m - t / 2; out.push([m + t / 2, null]); }
-    out[out.length - 1][1] = len - f; return out.filter(([a, b]) => b - a > 2);
+    for (const pos of posts.map(l => l.p).sort((a, b) => a - b)) { const mm = pos * len; out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); }
+    out[out.length - 1][1] = len - f; return out.filter(([a, b]) => b - a > 4);
   };
-  const xs = cuts(L.v || [], w), ys = cuts(L.h || [], h);
-  x.lineWidth = lw; x.strokeStyle = '#2a3b55';
+  const xs = cuts(L.v.filter(l => l.t === 'post'), w), ys = cuts(L.h.filter(l => l.t === 'post'), h);
+  const sv = L.v.filter(l => l.t === 'sprosse').map(l => l.p * w), sh = L.h.filter(l => l.t === 'sprosse').map(l => l.p * h);
   for (const [x0, x1] of xs) for (const [y0, y1] of ys) {
-    x.fillStyle = p.raa ? '#eef0f4' : '#f4f9ff'; x.fillRect(x0, y0, x1 - x0, y1 - y0);
-    x.strokeRect(x0, y0, x1 - x0, y1 - y0);
-    // lille glans-markering i hver rude
-    x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.6; x.beginPath();
-    const gw = x1 - x0, gh = y1 - y0;
-    x.moveTo(x0 + gw * .18, y0 + gh * .32); x.lineTo(x0 + gw * .38, y0 + gh * .14);
-    x.moveTo(x0 + gw * .22, y0 + gh * .46); x.lineTo(x0 + gw * .52, y0 + gh * .2); x.stroke(); x.restore();
+    // ramme
+    const rx0 = x0 + gap, ry0 = y0 + gap, rx1 = x1 - gap, ry1 = y1 - gap;
+    if (!glas) { x.fillStyle = RAMME; x.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0); x.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); }
+    // glas
+    const gx0 = rx0 + rw, gy0 = ry0 + rw, gx1 = rx1 - rw, gy1 = ry1 - rw;
+    if (gx1 - gx0 < 4 || gy1 - gy0 < 4) continue;
+    x.fillStyle = GLAS; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+    x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.8; x.beginPath();
+    const gw = gx1 - gx0, gh = gy1 - gy0;
+    x.moveTo(gx0 + gw * .12, gy0 + gh * .22); x.lineTo(gx0 + gw * .26, gy0 + gh * .08);
+    x.moveTo(gx0 + gw * .14, gy0 + gh * .32); x.lineTo(gx0 + gw * .36, gy0 + gh * .1); x.stroke(); x.restore();
+    // sprosser inden for dette glas
+    x.fillStyle = RAMME;
+    for (const sx of sv) if (sx > gx0 + ts && sx < gx1 - ts) { x.fillRect(sx - ts / 2, gy0, ts, gy1 - gy0); x.strokeRect(sx - ts / 2, gy0, ts, gy1 - gy0); }
+    for (const sy of sh) if (sy > gy0 + ts && sy < gy1 - ts) { x.fillRect(gx0, sy - ts / 2, gx1 - gx0, ts); x.strokeRect(gx0, sy - ts / 2, gx1 - gx0, ts); }
   }
-  x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
+  x.lineWidth = lw * 1.4; x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
   return c;
 }
 
@@ -392,30 +429,37 @@ function detectLines(img, crop) {
     const max = Math.max(...vals), thr = Math.max(mean + 2.2 * sd, max * 0.45);
     const raw = [];
     for (let i = m0; i < m1; i++) if (sm[i] >= thr && sm[i] >= sm[i - 1] && sm[i] >= sm[i + 1]) raw.push(i);
-    // en post har to kanter tæt på hinanden – læg dem sammen
+    // en post/sprosse har to kanter tæt på hinanden – læg dem sammen; bred = post, smal = sprosse
     const groups = [];
     for (const i of raw) { const gr = groups[groups.length - 1]; if (gr && i - gr[gr.length - 1] <= len * 0.07) gr.push(i); else groups.push([i]); }
-    return groups.map(gr => (gr[0] + gr[gr.length - 1]) / 2 / len)
-      .map(v => Math.round(v * 1000) / 1000).slice(0, 4);
+    return groups.slice(0, 5).map(gr => ({
+      p: Math.round((gr[0] + gr[gr.length - 1]) / 2 / len * 1000) / 1000,
+      t: (gr[gr.length - 1] - gr[0]) / len >= 0.03 ? 'post' : 'sprosse'
+    }));
   };
   return { v: peaks(col, w, h), h: peaks(row, h, w) };
 }
 
-// Skærm til at rette tegningens poster/sprosser med fingeren
+// Skærm til at rette tegningens poster og sprosser med fingeren
 function linesEditor(p, fu) {
   return new Promise(async resolve => {
-    let L = { v: [...((p.lines || {}).v || [])], h: [...((p.lines || {}).h || [])] };
+    let L = normLines(p.lines), sym = isSym(p);
+    if (sym) L = symLines(L);
     let img = null; if (fu) { try { img = await photoImg(fu); } catch (e) { img = null; } }
     const bg = document.createElement('div'); bg.className = 'dialog-bg'; bg.style.alignItems = 'stretch'; bg.style.padding = '0';
     bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
-      <div style="text-align:center;font-weight:600;margin-bottom:4px">Tegning af vinduet</div>
-      <div style="text-align:center;font-size:14px;color:#bbb;margin-bottom:10px">Træk i de gule linjer, så de ligger på poster og sprosser. Tryk på en linje for at vælge den.</div>
+      <div style="text-align:center;font-weight:600;margin-bottom:2px">Tegning af vinduet</div>
+      <div style="text-align:center;font-size:13.5px;color:#bbb;margin-bottom:8px">
+        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Træk i stregerne. Tryk på en streg for at vælge den.</div>
       <div id="lWrap" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
         <div id="lBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="lCv" style="display:block"></canvas></div>
       </div>
-      <div class="btns" style="margin-top:10px"><button class="btn sec small" id="lAddV">+ Lodret</button><button class="btn sec small" id="lAddH">+ Vandret</button><button class="btn danger small" id="lDel">Fjern valgt</button></div>
-      <div class="btns"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Ingen linjer</button></div>
-      <div class="btns"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
+      <div class="seg" id="lSym" style="margin-top:8px"><button data-s="1">Symmetrisk</button><button data-s="0">Asymmetrisk</button></div>
+      <div class="btns" style="margin-top:8px"><button class="btn sec small" id="lAddVP">+ Lodret post</button><button class="btn sec small" id="lAddHP">+ Vandret post</button></div>
+      <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAddVS">+ Lodret sprosse</button><button class="btn sec small" id="lAddHS">+ Vandret sprosse</button></div>
+      <div class="btns" style="margin-top:0"><button class="btn sec small" id="lType">Skift til sprosse</button><button class="btn danger small" id="lDel">Fjern valgt</button></div>
+      <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Fjern alle</button></div>
+      <div class="btns" style="margin-top:0"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
     </div>`;
     document.body.appendChild(bg);
     const box = bg.querySelector('#lBox'), cv = bg.querySelector('#lCv'), wrap = bg.querySelector('#lWrap');
@@ -436,16 +480,20 @@ function linesEditor(p, fu) {
     }
     function draw() {
       box.querySelectorAll('.ln').forEach(e => e.remove());
-      for (const k of ['v', 'h']) L[k].forEach((pos, i) => {
+      for (const k of ['v', 'h']) L[k].forEach((l, i) => {
         const el = document.createElement('div'); el.className = 'ln'; el.dataset.k = k; el.dataset.i = i;
-        const on = sel && sel.k === k && sel.i === i, col = on ? '#ff4d4d' : '#ffcc00';
+        const on = sel && sel.k === k && sel.i === i;
+        const col = on ? '#ff4d4d' : (l.t === 'post' ? '#ffcc00' : '#4fc3ff'), th = l.t === 'post' ? 7 : 3;
         el.style.cssText = k === 'v'
-          ? `position:absolute;top:0;height:100%;width:36px;left:${pos * W - 18}px;display:flex;justify-content:center;touch-action:none`
-          : `position:absolute;left:0;width:100%;height:36px;top:${pos * H - 18}px;display:flex;align-items:center;touch-action:none`;
-        el.innerHTML = `<div style="background:${col};${k === 'v' ? 'width:4px;height:100%' : 'height:4px;width:100%'};box-shadow:0 0 3px #000"></div>`;
+          ? `position:absolute;top:0;height:100%;width:36px;left:${l.p * W - 18}px;display:flex;justify-content:center;touch-action:none`
+          : `position:absolute;left:0;width:100%;height:36px;top:${l.p * H - 18}px;display:flex;align-items:center;touch-action:none`;
+        el.innerHTML = `<div style="background:${col};${k === 'v' ? `width:${th}px;height:100%` : `height:${th}px;width:100%`};box-shadow:0 0 3px #000"></div>`;
         box.appendChild(el);
       });
-      bg.querySelector('#lDel').disabled = !sel;
+      bg.querySelectorAll('#lSym button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === sym));
+      const cur = sel && L[sel.k][sel.i];
+      bg.querySelector('#lDel').disabled = !cur; bg.querySelector('#lType').disabled = !cur;
+      bg.querySelector('#lType').textContent = cur && cur.t === 'sprosse' ? 'Skift til post' : 'Skift til sprosse';
     }
     let drag = null;
     box.addEventListener('pointerdown', e => {
@@ -456,27 +504,36 @@ function linesEditor(p, fu) {
       if (!drag) return;
       const r = box.getBoundingClientRect();
       const v = drag.k === 'v' ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height;
-      L[drag.k][drag.i] = Math.round(Math.min(0.97, Math.max(0.03, v)) * 1000) / 1000; draw();
+      L[drag.k][drag.i].p = Math.round(Math.min(0.97, Math.max(0.03, v)) * 1000) / 1000;
+      if (sym) { sym = false; toast('Skiftet til asymmetrisk'); }
+      draw();
     });
     const end = () => { drag = null; };
     box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
-    const addLine = k => {
-      const pts = [0, ...L[k].slice().sort((a, b) => a - b), 1]; let best = 0.5, gap = 0;
+    const addLine = (k, t) => {
+      const pts = [0, ...L[k].map(l => l.p).sort((a, b) => a - b), 1]; let best = 0.5, gap = 0;
       for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > gap) { gap = pts[i + 1] - pts[i]; best = (pts[i] + pts[i + 1]) / 2; }
-      L[k].push(Math.round(best * 1000) / 1000); sel = { k, i: L[k].length - 1 }; draw();
+      L[k].push({ p: Math.round(best * 1000) / 1000, t }); if (sym) L = symLines(L);
+      sel = { k, i: L[k].findIndex(l => l.t === t && Math.abs(l.p - best) < 0.2) }; if (sel.i < 0) sel = null; draw();
     };
-    bg.querySelector('#lAddV').onclick = () => addLine('v');
-    bg.querySelector('#lAddH').onclick = () => addLine('h');
-    bg.querySelector('#lDel').onclick = () => { if (sel) { L[sel.k].splice(sel.i, 1); sel = null; draw(); } };
+    bg.querySelector('#lAddVP').onclick = () => addLine('v', 'post');
+    bg.querySelector('#lAddHP').onclick = () => addLine('h', 'post');
+    bg.querySelector('#lAddVS').onclick = () => addLine('v', 'sprosse');
+    bg.querySelector('#lAddHS').onclick = () => addLine('h', 'sprosse');
+    bg.querySelector('#lType').onclick = () => { const l = sel && L[sel.k][sel.i]; if (l) { l.t = l.t === 'post' ? 'sprosse' : 'post'; if (sym) { L = symLines(L); sel = null; } draw(); } };
+    bg.querySelector('#lDel').onclick = () => { if (sel) { L[sel.k].splice(sel.i, 1); sel = null; if (sym) L = symLines(L); draw(); } };
+    bg.querySelectorAll('#lSym button').forEach(b2 => b2.onclick = () => { sym = b2.dataset.s === '1'; if (sym) { L = symLines(L); sel = null; } draw(); });
     bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [] }; sel = null; draw(); };
-    bg.querySelector('#lAuto').onclick = () => { if (img) { L = detectLines(img, p.crop); sel = null; draw(); toast(`Fandt ${L.v.length + L.h.length} linjer`); } };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { L = detectLines(img, p.crop); if (sym) L = symLines(L); sel = null; draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);
     const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
     bg.querySelector('#lNo').onclick = () => done(null);
-    bg.querySelector('#lOk').onclick = () => done({ v: L.v.slice().sort((a, b) => a - b), h: L.h.slice().sort((a, b) => a - b) });
+    const srt = a => a.slice().sort((x, y) => x.p - y.p);
+    bg.querySelector('#lOk').onclick = () => done({ v: srt(L.v), h: srt(L.h), sym });
     requestAnimationFrame(layout);
   });
 }
+
 // Samler billede/tegning med målpile og tekst
 async function makeSketch(p, maxSide = 700) {
   let body = null;
@@ -548,7 +605,7 @@ async function makeSketch(p, maxSide = 700) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', isSym(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -678,7 +735,7 @@ function renderAdr() {
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
         ${karmTxt(p) ? `<div class="muted">${karmTxt(p)}</div>` : ''}
-        ${stafkTxt(p) ? `<div class="muted">${stafkTxt(p)}</div>` : ''}
+        ${[stafkTxt(p), symTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
         ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
@@ -776,6 +833,7 @@ const sketchExtra = p => {
   const a = [];
   if (karmTxt(p)) a.push(['#1b1f24', karmTxt(p)]);
   if (stafkTxt(p)) a.push(['#1b1f24', stafkTxt(p)]);
+  if (symTxt(p)) a.push(['#1b1f24', symTxt(p)]);
   for (const f of farveTxt(p)) a.push(['#1b1f24', f]);
   if (tilTxt(p)) a.push(['#17694a', tilTxt(p)]);
   if (pladeTxt(p)) a.push(['#1b1f24', pladeTxt(p)]);
@@ -807,7 +865,7 @@ function editPos(s, a, existing) {
   const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: allPos(s).reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false,
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, sym: true,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
   };
@@ -847,7 +905,8 @@ function editPos(s, a, existing) {
     <div id="eSkWrap" style="margin-top:10px">
       <canvas class="sketch" id="eSketch"></canvas>
       <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
-      <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Ret tegning (poster og sprosser)</button>
+      <div class="seg" id="eSym" style="margin-top:8px"><button type="button" data-s="1">Symmetrisk</button><button type="button" data-s="0">Asymmetrisk</button></div>
+      <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Tegn poster og sprosser</button>
       <div class="btns hidden" id="ePhotoBtns">
         <button class="btn sec small" id="eCrop">Markér vinduet</button>
         <button class="btn sec small" id="eToggle">Vis foto</button>
@@ -887,7 +946,7 @@ function editPos(s, a, existing) {
   const close = () => { bg.remove(); document.body.style.overflow = ''; $('#fileCam').onchange = null; $('#fileLib').onchange = null; };
 
   const segBtns = bg.querySelectorAll('#eType button');
-  const setType = t => { p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t)); redraw(); };
+  const setType = t => { p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t)); if (typeof updSym === 'function') updSym(); redraw(); };
   segBtns.forEach(b => b.onclick = () => setType(b.dataset.t));
 
   const read = () => {
@@ -940,6 +999,9 @@ function editPos(s, a, existing) {
   };
   bg.querySelector('#eToggle').onclick = () => { showPhoto = !showPhoto; updPhotoUI(); };
   bg.querySelector('#eRmPhoto').onclick = () => { p.fotoId = null; fu = null; p.crop = null; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); redraw(); };
+  const symBtns = bg.querySelectorAll('#eSym button');
+  const updSym = () => { bg.querySelector('#eSym').classList.toggle('hidden', p.type === 'glas'); symBtns.forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === isSym(p))); };
+  symBtns.forEach(b2 => b2.onclick = () => { p.sym = b2.dataset.s === '1'; updSym(); redraw(); });
   const visBtns = bg.querySelectorAll('#eVis button');
   const updVis = () => {
     bg.querySelector('#eVis').classList.toggle('hidden', !fu);
@@ -950,11 +1012,11 @@ function editPos(s, a, existing) {
   bg.querySelector('#eLines').onclick = async () => {
     read();
     const L = await linesEditor(p, fu);
-    if (L) { p.lines = L; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); updVis(); redraw(); }
+    if (L) { p.sym = L.sym; delete L.sym; p.lines = L; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
   };
   const autoLines = async () => {
     try { const L = detectLines(await photoImg(fu), p.crop); p.lines = L; p.visning = 'tegning';
-      toast(L.v.length + L.h.length ? `Fandt ${L.v.length + L.h.length} linjer` : 'Ingen poster fundet');
+      toast(L.v.length + L.h.length ? `Fandt ${L.v.length + L.h.length} streger` : 'Ingen poster fundet');
     } catch (e) { /* ignorer */ }
   };
   const doCrop = async () => { const c = await cropEditor(fu, p.crop); if (c) { p.crop = c; await autoLines(); showPhoto = false; updPhotoUI(); updVis(); redraw(); } };
@@ -1110,7 +1172,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${t.v} vinduer og ${t.g} glas på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }

@@ -631,7 +631,9 @@ function renderSag() {
   const adrs = s.adresser || [];
   $('#main').innerHTML = syncBarHTML() +
     (s.arkiveret ? `<div class="warn" style="display:flex;align-items:center;gap:10px"><span class="grow">Arkiveret ${fmtDato(s.arkiveretDato)}</span><button class="btn small" id="reopen" style="width:auto;padding:8px 14px">Genåbn</button></div>` : '') +
-    (s.navn ? `<div class="muted" style="margin:0 2px 8px">${esc(s.navn)}</div>` : '') + `
+    `<div class="card row" style="padding:10px 12px"><div class="grow"><div class="muted" style="font-size:13px">Sagsnummer</div>
+      <div class="title" style="font-size:19px">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted">${esc(s.navn)}</div>` : ''}</div>
+      <button class="btn sec small" id="retSag" style="width:auto;padding:10px 16px">✏️ Ret</button></div>` + `
     <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
     <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div></div>
     ${adrs.length ? '' : `<div class="empty">Ingen adresser endnu.<br>Tryk på <b>Tilføj adresse</b>.</div>`}
@@ -644,6 +646,7 @@ function renderSag() {
     ${s.arkiveret ? '' : `<button class="btn sec" id="arkiver" style="margin-top:16px">Arkivér sag</button>`}`;
   $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
   if (allPos(s).length) { $('#shareTxt').onclick = () => shareText(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
+  $('#retSag').onclick = () => retSag(s);
   const ark = $('#arkiver'); if (ark) ark.onclick = () => arkiver(s, true);
   const re = $('#reopen'); if (re) re.onclick = () => arkiver(s, false);
   $('#fabWrap').innerHTML = `<button class="btn fab" id="addAdr">+ Tilføj adresse</button>`;
@@ -703,10 +706,16 @@ function menuSheet(title, items) {
   bg.querySelector('#mClose').onclick = close;
   bg.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { close(); items[+b.dataset.i][0](); });
 }
+async function retSag(s) {
+  const r = await formDialog('Ret sag', [['Sagsnummer', s.nr || '', ''], ['Kunde / beskrivelse', s.navn || '', '']], 'Gem');
+  if (!r) return;
+  if (!r[0]) { toast('Sagsnummer må ikke være tomt'); return; }
+  if (liveSager().some(x => x.id !== s.id && x.nr === r[0]) && !(await dialog({ text: `Sagsnummer ${r[0]} findes allerede på en anden sag. Vil du bruge det alligevel?`, ok: 'Ja' }))) return;
+  s.nr = r[0]; s.navn = r[1]; touch(s); save(); render(); toast('Sagen er rettet');
+}
 function sagMenu(s) {
   menuSheet(sagLabel(s), [
-    [async () => { const r = await formDialog('Ret sag', [['Sagsnummer', s.nr, '', 'numeric'], ['Kunde / beskrivelse', s.navn || '', '']], 'Gem');
-      if (r && r[0]) { s.nr = r[0]; s.navn = r[1]; touch(s); save(); render(); } }, 'Ret sagsnummer / kunde'],
+    [() => retSag(s), 'Ret sagsnummer / kunde'],
     [() => arkiver(s, !s.arkiveret), s.arkiveret ? 'Genåbn sag' : 'Arkivér sag'],
     [async () => { if (await dialog({ text: `Slet ${sagLabel(s)} med alle adresser og ${allPos(s).length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
       s.deleted = true; s.adresser = []; s.pos = []; touch(s); save(); view = { name: s.arkiveret ? 'arkiv' : 'home' }; render(); } }, 'Slet sag', 'danger']

@@ -116,7 +116,7 @@ class SagView(_Base):
             return self.json_message("Ugyldig JSON", 400)
         if not isinstance(obj, dict) or obj.get("id") != sag_id:
             return self.json_message("Forkert indhold", 400)
-        if not obj.get("deleted") and not isinstance(obj.get("pos"), list):
+        if not obj.get("deleted") and not isinstance(obj.get("pos"), list) and not isinstance(obj.get("adresser"), list):
             return self.json_message("Mangler positioner", 400)
         ok, cur = await self.hass.async_add_executor_job(self.store.put_sag, sag_id, obj)
         if not ok:

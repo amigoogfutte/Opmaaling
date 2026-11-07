@@ -211,9 +211,22 @@ async function fotoKeys() {
   try { return new Set(await fotoTx('readonly', st => st.getAllKeys())); } catch (e) { return new Set(fotoMem.keys()); }
 }
 // Ældre data havde billedet direkte i positionen – flyt det til foto-lageret
+// Ældre opmålinger (uden sagsnummer) bliver til en sag med én adresse
+function normalizeSag(sg) {
+  if (!sg || sg.deleted) { if (sg) { sg.adresser = sg.adresser || []; sg.pos = []; } return sg; }
+  if (!Array.isArray(sg.adresser)) {
+    sg.adresser = [{ id: sg.id + 'a', adresse: sg.navn || 'Adresse', pos: Array.isArray(sg.pos) ? sg.pos : [] }];
+    sg.nr = sg.nr || sg.navn || ''; sg.navn = '';
+  }
+  for (const a of sg.adresser) if (!Array.isArray(a.pos)) a.pos = [];
+  sg.pos = []; // bevares tom for kompatibilitet med ældre server
+  return sg;
+}
+const allPos = sg => (sg.adresser || []).flatMap(a => a.pos || []);
 async function migrateFotos(list) {
   let changed = false;
-  for (const sg of list) for (const p of (sg.pos || [])) {
+  list.forEach(normalizeSag);
+  for (const sg of list) for (const p of allPos(sg)) {
     if (p.foto && !p.fotoId) { const id = uid(); await fotoPut(id, p.foto); p.fotoId = id; changed = true; }
     if ('foto' in p) { delete p.foto; changed = true; }
   }
@@ -222,11 +235,12 @@ async function migrateFotos(list) {
 }
 
 const sag = () => data.sager.find(s => s.id === view.sagId && !s.deleted);
-const totals = s => {
+const totalsP = list => {
   let v = 0, g = 0;
-  for (const p of s.pos) (p.type === 'glas' ? (g += p.antal || 0) : (v += p.antal || 0));
+  for (const p of list) (p.type === 'glas' ? (g += p.antal || 0) : (v += p.antal || 0));
   return { v, g };
 };
+const totals = s => totalsP(allPos(s));
 const fmtMM = n => (n || n === 0) && n !== '' ? String(Math.round(Number(n))) : '–';
 
 /* ============ Små dialoger (i stedet for alert/confirm) ============ */
@@ -408,44 +422,117 @@ async function thumbURL(p) {
 }
 
 /* ============ Visninger ============ */
+const adr = () => { const s = sag(); return s && (s.adresser || []).find(a => a.id === view.adrId); };
 function render() {
-  if (view.name === 'sag' && sag()) renderSag(); else { view = { name: 'home' }; renderHome(); }
+  if (view.name === 'adr' && sag() && adr()) renderAdr();
+  else if ((view.name === 'sag' || view.name === 'adr') && sag()) { view = { ...view, name: 'sag' }; renderSag(); }
+  else if (view.name === 'arkiv') renderArkiv();
+  else { view = { name: 'home' }; renderHome(); }
   window.scrollTo(0, 0);
 }
+const sagLabel = s => s.nr ? `Sag ${s.nr}` : 'Sag uden nummer';
+const fmtDato = t => t ? new Date(t).toLocaleDateString('da-DK') : '';
+function sagCard(s) {
+  const t = totals(s), n = (s.adresser || []).length;
+  const adrNavne = (s.adresser || []).map(a => a.adresse).filter(Boolean);
+  return `<div class="card clickable row" data-id="${s.id}">
+    <div class="grow"><div class="title">${esc(sagLabel(s))}${s.navn ? ' · ' + esc(s.navn) : ''}</div>
+    <div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n} adresse${n === 1 ? '' : 'r'}${adrNavne.length ? ': ' + esc(adrNavne.join(', ')) : ''}</div>
+    <div class="muted">${s.arkiveret ? 'Arkiveret ' + fmtDato(s.arkiveretDato) : 'Oprettet ' + fmtDato(s.oprettet)}</div></div>
+    <div style="text-align:right;flex:none"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
+    <div><b>${t.g}</b> <span class="muted">glas</span></div></div></div>`;
+}
+const matchSag = (s, q) => !q || [s.nr, s.navn, ...(s.adresser || []).map(a => a.adresse)].join(' ').toLowerCase().includes(q.toLowerCase());
+function sagListe(list, emptyHTML, from) {
+  const draw = q => {
+    const f = list.filter(s => matchSag(s, q));
+    const box = $('#sagList');
+    box.innerHTML = f.length ? f.map(sagCard).join('') : (list.length ? `<div class="empty">Ingen sager matcher "${esc(q)}".</div>` : emptyHTML);
+    box.querySelectorAll('[data-id]').forEach(el => el.onclick = () => { view = { name: 'sag', sagId: el.dataset.id, from }; render(); });
+  };
+  const q = $('#q'); if (q) q.oninput = () => draw(q.value.trim());
+  draw('');
+}
+const searchHTML = ph => `<input type="text" id="q" placeholder="${ph}" style="margin-bottom:10px">`;
 
 function renderHome() {
-  $('#hdr').innerHTML = `<h1>Vinduesopmåling</h1><button id="bkBtn">Backup</button>`;
+  $('#hdr').innerHTML = `<h1>Sager</h1><button id="arkBtn">Arkiv</button><button id="bkBtn">Backup</button>`;
   $('#bkBtn').onclick = openBackup;
-  const list = liveSager().sort((a, b) => b.oprettet - a.oprettet);
+  $('#arkBtn').onclick = () => { view = { name: 'arkiv' }; render(); };
+  const list = liveSager().filter(s => !s.arkiveret).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
-    (list.length ? list.map(s => {
-      const t = totals(s);
-      return `<div class="card clickable row" data-id="${s.id}">
-        <div class="grow"><div class="title">${esc(s.navn)}</div>
-        <div class="muted">${new Date(s.oprettet).toLocaleDateString('da-DK')} · ${s.pos.length} pos.</div></div>
-        <div style="text-align:right"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
-        <div><b>${t.g}</b> <span class="muted">glas</span></div></div></div>`;
-    }).join('') : `<div class="empty">Ingen opmålinger endnu.<br>Tryk på <b>Ny opmåling</b> for at starte – fx med adressen eller kundens navn.</div>`);
-  $('#main').querySelectorAll('[data-id]').forEach(el => el.onclick = () => { view = { name: 'sag', sagId: el.dataset.id }; render(); });
-  $('#fabWrap').innerHTML = `<button class="btn fab" id="newSag">+ Ny opmåling</button>`;
+    (list.length > 4 ? searchHTML('Søg sagsnummer, kunde eller adresse') : '') + `<div id="sagList"></div>`;
+  sagListe(list, `<div class="empty">Ingen aktive sager.<br>Tryk på <b>Ny sag</b> for at starte.</div>`, 'home');
+  $('#fabWrap').innerHTML = `<button class="btn fab" id="newSag">+ Ny sag</button>`;
   $('#newSag').onclick = async () => {
-    const navn = await dialog({ text: 'Navn på opmålingen (fx adresse eller kunde)', input: 'Fx Strandvejen 12', ok: 'Opret' });
-    if (!navn) return;
-    const s = { id: uid(), navn, oprettet: Date.now(), updated: Date.now(), pos: [] };
-    data.sager.push(s); save(); view = { name: 'sag', sagId: s.id }; render();
+    const r = await formDialog('Ny sag', [['Sagsnummer', '', 'Fx 2026-114', 'numeric'], ['Kunde / beskrivelse (valgfri)', '', 'Fx Jensen']], 'Opret');
+    if (!r || !r[0]) { if (r) toast('Skriv et sagsnummer'); return; }
+    const s = { id: uid(), nr: r[0], navn: r[1], oprettet: Date.now(), updated: Date.now(), adresser: [], pos: [] };
+    data.sager.push(s); save(); view = { name: 'sag', sagId: s.id, from: 'home' }; render();
+    addAdresse(s);
   };
 }
 
-async function renderSag() {
-  const s = sag(); const t = totals(s);
-  $('#hdr').innerHTML = `<button id="back">‹ Tilbage</button><h1>${esc(s.navn)}</h1><button id="more">•••</button>`;
+function renderArkiv() {
+  $('#hdr').innerHTML = `<button id="back">‹ Sager</button><h1>Arkiv</h1>`;
   $('#back').onclick = () => { view = { name: 'home' }; render(); };
+  const list = liveSager().filter(s => s.arkiveret).sort((a, b) => (b.arkiveretDato || 0) - (a.arkiveretDato || 0));
+  $('#main').innerHTML = syncBarHTML() + searchHTML('Søg i arkivet: sagsnummer, kunde, adresse') + `<div id="sagList"></div>`;
+  sagListe(list, `<div class="empty">Arkivet er tomt.<br>Arkivér en sag, når den er færdig.</div>`, 'arkiv');
+  $('#fabWrap').innerHTML = '';
+}
+
+async function addAdresse(s) {
+  const r = await formDialog(`Ny adresse i ${sagLabel(s)}`, [['Adresse', '', 'Fx Strandvejen 12, 5000 Odense']], 'Tilføj');
+  if (!r || !r[0]) return;
+  const a = { id: uid(), adresse: r[0], pos: [] };
+  s.adresser.push(a); touch(s); save(); view = { name: 'adr', sagId: s.id, adrId: a.id, from: view.from }; render();
+}
+
+function renderSag() {
+  const s = sag(), t = totals(s);
+  $('#hdr').innerHTML = `<button id="back">‹ ${view.from === 'arkiv' || s.arkiveret ? 'Arkiv' : 'Sager'}</button><h1>${esc(sagLabel(s))}</h1><button id="more">•••</button>`;
+  $('#back').onclick = () => { view = { name: view.from === 'arkiv' || s.arkiveret ? 'arkiv' : 'home' }; render(); };
   $('#more').onclick = () => sagMenu(s);
+  const adrs = s.adresser || [];
+  $('#main').innerHTML = syncBarHTML() +
+    (s.arkiveret ? `<div class="warn" style="display:flex;align-items:center;gap:10px"><span class="grow">Arkiveret ${fmtDato(s.arkiveretDato)}</span><button class="btn small" id="reopen" style="width:auto;padding:8px 14px">Genåbn</button></div>` : '') +
+    (s.navn ? `<div class="muted" style="margin:0 2px 8px">${esc(s.navn)}</div>` : '') + `
+    <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
+    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div></div>
+    ${adrs.length ? '' : `<div class="empty">Ingen adresser endnu.<br>Tryk på <b>Tilføj adresse</b>.</div>`}
+    ${adrs.map(a => { const ta = totalsP(a.pos); return `
+      <div class="card clickable row" data-a="${a.id}">
+        <div class="grow"><div class="title">${esc(a.adresse)}</div><div class="muted">${a.pos.length} pos.</div></div>
+        <div style="text-align:right;flex:none"><div><b>${ta.v}</b> <span class="muted">vinduer</span></div>
+        <div><b>${ta.g}</b> <span class="muted">glas</span></div></div></div>`; }).join('')}
+    ${allPos(s).length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del hele sagen</button><button class="btn sec" id="copyTxt">Kopiér</button></div>` : ''}
+    ${s.arkiveret ? '' : `<button class="btn sec" id="arkiver" style="margin-top:16px">Arkivér sag</button>`}`;
+  $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
+  if (allPos(s).length) { $('#shareTxt').onclick = () => shareText(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
+  const ark = $('#arkiver'); if (ark) ark.onclick = () => arkiver(s, true);
+  const re = $('#reopen'); if (re) re.onclick = () => arkiver(s, false);
+  $('#fabWrap').innerHTML = `<button class="btn fab" id="addAdr">+ Tilføj adresse</button>`;
+  $('#addAdr').onclick = () => addAdresse(s);
+}
+
+async function arkiver(s, ja) {
+  if (ja && !(await dialog({ text: `Arkivér ${sagLabel(s)}? Den flyttes til arkivet, hvor du altid kan finde og genåbne den.`, ok: 'Arkivér' }))) return;
+  s.arkiveret = ja; s.arkiveretDato = ja ? Date.now() : null; touch(s); save();
+  if (ja) { view = { name: 'home' }; render(); toast('Sagen er arkiveret'); }
+  else { view = { name: 'sag', sagId: s.id, from: 'home' }; render(); toast('Sagen er genåbnet'); }
+}
+
+function renderAdr() {
+  const s = sag(), a = adr(), t = totalsP(a.pos);
+  $('#hdr').innerHTML = `<button id="back">‹ ${esc(sagLabel(s))}</button><h1>${esc(a.adresse)}</h1><button id="more">•••</button>`;
+  $('#back').onclick = () => { view = { ...view, name: 'sag' }; render(); };
+  $('#more').onclick = () => adrMenu(s, a);
   $('#main').innerHTML = syncBarHTML() + `
     <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
     <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div></div>
-    ${s.pos.length ? '' : `<div class="empty">Ingen positioner endnu.<br>Tryk på <b>Tilføj vindue/glas</b>.</div>`}
-    <div id="posList">${s.pos.map(p => `
+    ${a.pos.length ? '' : `<div class="empty">Ingen positioner endnu.<br>Tryk på <b>Tilføj vindue/glas</b>.</div>`}
+    <div id="posList">${a.pos.map(p => `
       <div class="card clickable row" data-p="${p.id}">
         <img class="thumb" data-thumb="${p.id}" alt="">
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
@@ -460,36 +547,59 @@ async function renderSag() {
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
         ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
-    ${s.pos.length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del liste</button><button class="btn sec" id="copyTxt">Kopiér liste</button></div>` : ''}`;
-  $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, s.pos.find(p => p.id === el.dataset.p)));
-  if (s.pos.length) { $('#shareTxt').onclick = () => shareText(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
+    ${a.pos.length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del liste</button><button class="btn sec" id="copyTxt">Kopiér liste</button></div>` : ''}`;
+  $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, a, a.pos.find(p => p.id === el.dataset.p)));
+  if (a.pos.length) { $('#shareTxt').onclick = () => shareText(s, a); $('#copyTxt').onclick = () => copyText(listText(s, a)); }
   $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas</button>`;
-  $('#addPos').onclick = () => editPos(s, null);
-  for (const p of s.pos) {
+  $('#addPos').onclick = () => editPos(s, a, null);
+  for (const p of a.pos) {
     const img = document.querySelector(`[data-thumb="${p.id}"]`);
     if (img) thumbURL(p).then(u => { img.src = u; }).catch(() => {});
   }
 }
 
-async function sagMenu(s) {
+function menuSheet(title, items) {
   const bg = document.createElement('div'); bg.className = 'sheet-bg';
-  bg.innerHTML = `<div class="sheet"><h2>${esc(s.navn)}</h2>
-    <button class="btn sec" id="mRen" style="margin:8px 0">Omdøb</button>
-    <button class="btn sec" id="mRenum" style="margin:8px 0">Nummerér positioner forfra (1, 2, 3 …)</button>
-    <button class="btn danger" id="mDel" style="margin:8px 0">Slet opmåling</button>
+  bg.innerHTML = `<div class="sheet"><h2>${esc(title)}</h2>${items.map(([, label, cls], i) =>
+    `<button class="btn ${cls || 'sec'}" data-i="${i}" style="margin:8px 0">${esc(label)}</button>`).join('')}
     <button class="btn" id="mClose" style="margin-top:14px">Luk</button></div>`;
   document.body.appendChild(bg);
   const close = () => bg.remove();
   bg.onclick = e => { if (e.target === bg) close(); };
-  $('#mClose').onclick = close;
-  $('#mRen').onclick = async () => { close(); const n = await dialog({ text: 'Nyt navn', input: 'Navn', value: s.navn, ok: 'Gem' }); if (n) { s.navn = n; touch(s); save(); render(); } };
-  $('#mRenum').onclick = () => { s.pos.forEach((p, i) => p.nr = i + 1); touch(s); save(); close(); render(); toast('Nummereret'); };
-  $('#mDel').onclick = async () => {
-    close();
-    if (await dialog({ text: `Slet "${s.navn}" med alle ${s.pos.length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
-      s.deleted = true; s.pos = []; touch(s); save(); view = { name: 'home' }; render();
-    }
-  };
+  bg.querySelector('#mClose').onclick = close;
+  bg.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { close(); items[+b.dataset.i][0](); });
+}
+function sagMenu(s) {
+  menuSheet(sagLabel(s), [
+    [async () => { const r = await formDialog('Ret sag', [['Sagsnummer', s.nr, '', 'numeric'], ['Kunde / beskrivelse', s.navn || '', '']], 'Gem');
+      if (r && r[0]) { s.nr = r[0]; s.navn = r[1]; touch(s); save(); render(); } }, 'Ret sagsnummer / kunde'],
+    [() => arkiver(s, !s.arkiveret), s.arkiveret ? 'Genåbn sag' : 'Arkivér sag'],
+    [async () => { if (await dialog({ text: `Slet ${sagLabel(s)} med alle adresser og ${allPos(s).length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
+      s.deleted = true; s.adresser = []; s.pos = []; touch(s); save(); view = { name: s.arkiveret ? 'arkiv' : 'home' }; render(); } }, 'Slet sag', 'danger']
+  ]);
+}
+function adrMenu(s, a) {
+  menuSheet(a.adresse, [
+    [async () => { const r = await formDialog('Ret adresse', [['Adresse', a.adresse, '']], 'Gem'); if (r && r[0]) { a.adresse = r[0]; touch(s); save(); render(); } }, 'Ret adresse'],
+    [() => { a.pos.forEach((p, i) => p.nr = i + 1); touch(s); save(); render(); toast('Nummereret'); }, 'Nummerér positioner forfra (1, 2, 3 …)'],
+    [async () => { if (await dialog({ text: `Slet adressen "${a.adresse}" med ${a.pos.length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
+      s.adresser = s.adresser.filter(x => x.id !== a.id); touch(s); save(); view = { ...view, name: 'sag' }; render(); } }, 'Slet adresse', 'danger']
+  ]);
+}
+function formDialog(title, fields, ok) {
+  return new Promise(resolve => {
+    const bg = document.createElement('div'); bg.className = 'dialog-bg';
+    bg.innerHTML = `<div class="dialog"><p><b>${esc(title)}</b></p>${fields.map(([label, value, ph, mode], i) =>
+      `<label class="f" style="margin-top:${i ? 10 : 0}px">${esc(label)}</label><input type="text" data-f="${i}" value="${esc(value)}" placeholder="${esc(ph || '')}" ${mode ? `inputmode="${mode === 'numeric' ? 'text' : mode}"` : ''}>`).join('')}
+      <div class="btns" style="margin-top:14px"><button class="btn sec" id="fNo">Annuller</button><button class="btn" id="fOk">${esc(ok)}</button></div></div>`;
+    document.body.appendChild(bg);
+    const ins = [...bg.querySelectorAll('[data-f]')];
+    setTimeout(() => ins[0].focus(), 50);
+    const done = v => { bg.remove(); resolve(v); };
+    ins.forEach((el, i) => el.addEventListener('keydown', e => { if (e.key === 'Enter') { if (ins[i + 1]) ins[i + 1].focus(); else done(ins.map(x => x.value.trim())); } }));
+    bg.querySelector('#fOk').onclick = () => done(ins.map(x => x.value.trim()));
+    bg.querySelector('#fNo').onclick = () => done(null);
+  });
 }
 
 const karmTxt = p => (p.kd || p.kt) ? 'Karm: ' + [p.kd ? 'dybde ' + fmtMM(p.kd) : '', p.kt ? 'tykkelse ' + fmtMM(p.kt) : ''].filter(Boolean).join(' × ') + ' mm' : '';
@@ -540,11 +650,11 @@ function raaTiles(selected) {
 /* ============ Redigér position ============ */
 function parseMM(v) { const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n) : ''; }
 
-function editPos(s, existing) {
+function editPos(s, a, existing) {
   const isNew = !existing;
-  const last = s.pos[s.pos.length - 1];
+  const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
-    id: uid(), nr: s.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
+    id: uid(), nr: a.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
     rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
@@ -557,7 +667,7 @@ function editPos(s, existing) {
       <div><label class="f">Pos. nr.</label><input inputmode="numeric" id="eNr" value="${esc(p.nr)}"></div>
       <div style="flex:2.2"><label class="f">Rum / placering</label><input type="text" id="eRum" value="${esc(p.rum)}" placeholder="Fx Stue, mod syd" list="rumList"></div>
     </div>
-    <datalist id="rumList">${[...new Set(liveSager().flatMap(x => x.pos.map(q => q.rum)).filter(Boolean))].map(r => `<option value="${esc(r)}">`).join('')}</datalist>
+    <datalist id="rumList">${[...new Set(liveSager().flatMap(x => allPos(x).map(q => q.rum)).filter(Boolean))].map(r => `<option value="${esc(r)}">`).join('')}</datalist>
     <div class="two">
       <div><label class="f">Bredde (midt på)</label><div class="mm"><input inputmode="decimal" id="eB" value="${esc(p.b)}" placeholder="0"><span>mm</span></div></div>
       <div><label class="f">Højde (midt på)</label><div class="mm"><input inputmode="decimal" id="eH" value="${esc(p.h)}" placeholder="0"><span>mm</span></div></div>
@@ -605,7 +715,7 @@ function editPos(s, existing) {
         <input type="text" id="eFiR" list="farveList" value="${esc(p.fiR || '')}" placeholder="Fx hvid"></div>
     </div>
     <label class="check small"><input type="checkbox" id="eFiEns" ${p.fiEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
-    <datalist id="farveList">${[...new Set([...liveSager().flatMap(x => x.pos.flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))].map(f => `<option value="${esc(f)}">`).join('')}</datalist>
+    <datalist id="farveList">${[...new Set([...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))].map(f => `<option value="${esc(f)}">`).join('')}</datalist>
     <label class="check"><input type="checkbox" id="eTil" ${harTil(p) ? 'checked' : ''}> Tilsætning</label>
     <div id="eTilWrap" class="${harTil(p) ? '' : 'hidden'}"><label class="f">Hvor?</label>
     <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div></div>
@@ -686,9 +796,9 @@ function editPos(s, existing) {
   const doSave = () => {
     read();
     if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
-    const i = s.pos.findIndex(q => q.id === p.id);
-    if (i >= 0) s.pos[i] = p; else s.pos.push(p);
-    s.pos.sort((a, b) => a.nr - b.nr);
+    const i = a.pos.findIndex(q => q.id === p.id);
+    if (i >= 0) a.pos[i] = p; else a.pos.push(p);
+    a.pos.sort((x, y) => x.nr - y.nr);
     touch(s); save(); close(); render(); toast(isNew ? 'Position tilføjet' : 'Gemt');
   };
   bg.querySelector('#eSave').onclick = doSave; bg.querySelector('#eSave2').onclick = doSave;
@@ -696,10 +806,10 @@ function editPos(s, existing) {
   const del = bg.querySelector('#eDel');
   if (del) del.onclick = async () => {
     if (await dialog({ text: `Slet pos. ${p.nr}?`, ok: 'Slet', danger: true })) {
-      s.pos = s.pos.filter(q => q.id !== p.id); touch(s); save(); close(); render();
+      a.pos = a.pos.filter(q => q.id !== p.id); touch(s); save(); close(); render();
     }
   };
-  bg.querySelector('#eShareSk').onclick = async () => { read(); shareSketch(s, p); };
+  bg.querySelector('#eShareSk').onclick = async () => { read(); shareSketch(s, p, a); };
 
   bg.querySelector('#eRaa').addEventListener('change', e => {
     bg.querySelector('#eRaaWrap').classList.toggle('hidden', !e.target.checked);
@@ -818,16 +928,20 @@ function cropEditor(src, crop) {
 }
 
 /* ============ Del / kopiér ============ */
-function listText(s) {
-  const t = totals(s);
+function listText(s, only) {
   const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
-  const v = s.pos.filter(p => p.type !== 'glas'), g = s.pos.filter(p => p.type === 'glas');
-  let out = `Opmåling: ${s.navn}\nDato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
+  const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
+  let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
+  if (!only) { const t = totals(s); out += `Hele sagen: ${t.v} vinduer og ${t.g} glas på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
   const vent = list => list.filter(p => p.ventil).reduce((n, p) => n + (p.antal || 0), 0);
   const raa = list => list.filter(p => p.raa).reduce((n, p) => n + (p.antal || 0), 0);
   const ventTxt = list => { const a = []; if (vent(list)) a.push(`${vent(list)} med ventil`); if (raa(list)) a.push(`${raa(list)} med råglas`); return a.length ? ` (heraf ${a.join(', ')})` : ''; };
-  if (v.length) out += `\nVINDUER – i alt ${t.v} stk${ventTxt(v)}\n` + v.map(line).join('\n') + '\n';
-  if (g.length) out += `\nGLAS – i alt ${t.g} stk${ventTxt(g)}\n` + g.map(line).join('\n') + '\n';
+  for (const a of adrs) {
+    const v = a.pos.filter(p => p.type !== 'glas'), g = a.pos.filter(p => p.type === 'glas'), t = totalsP(a.pos);
+    if (!only) out += `\n===== ${a.adresse} =====\n`;
+    if (v.length) out += `\nVINDUER – i alt ${t.v} stk${ventTxt(v)}\n` + v.map(line).join('\n') + '\n';
+    if (g.length) out += `\nGLAS – i alt ${t.g} stk${ventTxt(g)}\n` + g.map(line).join('\n') + '\n';
+  }
   return out;
 }
 async function copyText(txt) {
@@ -841,30 +955,31 @@ function showCopyBox(txt) {
   document.body.appendChild(bg); bg.querySelector('button').onclick = () => bg.remove();
   const ta = bg.querySelector('textarea'); ta.focus(); ta.select();
 }
-async function shareText(s) {
-  const txt = listText(s);
+async function shareText(s, only) {
+  const txt = listText(s, only);
+  const adrs = only ? [only] : (s.adresser || []);
   if (navigator.share) {
     try {
       // Prøv at dele tekst + skitser
       const files = [];
       if (navigator.canShare) {
-        for (const p of s.pos) {
+        for (const [ai, a] of adrs.entries()) for (const p of a.pos) {
           const c = await makeSketch(p, 900);
           const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
-          if (blob) files.push(new File([blob], `pos-${p.nr}.jpg`, { type: 'image/jpeg' }));
+          if (blob) files.push(new File([blob], `${adrs.length > 1 ? 'adr' + (ai + 1) + '-' : ''}pos-${p.nr}.jpg`, { type: 'image/jpeg' }));
         }
       }
       const withFiles = files.length && navigator.canShare({ files, text: txt });
       if (withFiles) {
         const choice = await dialog({ text: 'Skal skitserne sendes med?', ok: 'Ja, med skitser', cancel: 'Kun tekst' });
-        if (choice) { await navigator.share({ title: 'Opmåling ' + s.navn, text: txt, files }); return; }
+        if (choice) { await navigator.share({ title: sagLabel(s), text: txt, files }); return; }
       }
-      await navigator.share({ title: 'Opmåling ' + s.navn, text: txt }); return;
+      await navigator.share({ title: sagLabel(s), text: txt }); return;
     } catch (e) { if (e && e.name === 'AbortError') return; }
   }
   copyText(txt);
 }
-async function shareSketch(s, p) {
+async function shareSketch(s, p, a) {
   const c = await makeSketch(p, 1000);
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
   const file = blob && new File([blob], `pos-${p.nr}.jpg`, { type: 'image/jpeg' });
@@ -892,7 +1007,7 @@ function openBackup() {
   $('#bClose').onclick = close;
   $('#bExp').onclick = async () => {
     const fotos = {};
-    for (const sg of liveSager()) for (const p of sg.pos) if (p.fotoId) { const u = await fotoURL(p.fotoId); if (u) fotos[p.fotoId] = u; }
+    for (const sg of liveSager()) for (const p of allPos(sg)) if (p.fotoId) { const u = await fotoURL(p.fotoId); if (u) fotos[p.fotoId] = u; }
     const json = JSON.stringify({ app: 'opmaaling', version: 2, gemt: new Date().toISOString(), data, fotos });
     const name = `opmaaling-backup-${new Date().toISOString().slice(0, 10)}.json`;
     const file = new File([json], name, { type: 'application/json' });
@@ -916,12 +1031,12 @@ function openBackup() {
       await migrateFotos(inc);
       let added = 0;
       for (const s of inc) {
-        if (!s || !Array.isArray(s.pos)) continue;
+        if (!s || !s.id) continue;
         const i = data.sager.findIndex(x => x.id === s.id);
         if (i >= 0) data.sager[i] = s; else data.sager.push(s);
         if (!s.deleted) added++;
       }
-      save(); close(); render(); toast(`${added} opmålinger indlæst`);
+      save(); close(); render(); toast(`${added} sager indlæst`);
     } catch (err) { toast('Filen kunne ikke læses'); }
   };
 }
@@ -1024,7 +1139,7 @@ async function sync() {
       if (!local || (r.updated || 0) > (local.updated || 0)) {
         const res = await api('sager/' + encodeURIComponent(r.id));
         if (!res.ok) continue;
-        const sg = await res.json();
+        const sg = normalizeSag(await res.json());
         const i = data.sager.findIndex(s => s.id === sg.id);
         if (i >= 0) data.sager[i] = sg; else data.sager.push(sg);
         changedLocal = true;
@@ -1037,7 +1152,7 @@ async function sync() {
         const res = await api('sager/' + encodeURIComponent(sg.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sg) });
         if (res.status === 409) {
           const j = await res.json(); const i = data.sager.findIndex(s => s.id === sg.id);
-          if (j.sag && i >= 0) { data.sager[i] = j.sag; changedLocal = true; }
+          if (j.sag && i >= 0) { data.sager[i] = normalizeSag(j.sag); changedLocal = true; }
         } else if (!res.ok) throw new Error('put ' + res.status);
       }
     }
@@ -1045,7 +1160,7 @@ async function sync() {
     // Billeder: send dem, der mangler i HA, og hent dem, der mangler her
     const rf = new Set(await (await api('fotos')).json());
     const lf = await fotoKeys();
-    const used = new Set(); for (const sg of liveSager()) for (const p of sg.pos) if (p.fotoId) used.add(p.fotoId);
+    const used = new Set(); for (const sg of liveSager()) for (const p of allPos(sg)) if (p.fotoId) used.add(p.fotoId);
     for (const id of used) {
       if ((lf.has(id) || fotoMem.has(id)) && !rf.has(id)) {
         const u = await fotoURL(id); if (!u) continue;

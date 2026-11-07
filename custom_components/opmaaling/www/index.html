@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.8';
+const APP_VERSION = '0.4.9';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -353,10 +353,12 @@ const harRammeInfo = p => p.type !== 'glas' && p.type !== 'dor';
 const aabningLines = p => {
   if (!harRammeInfo(p)) return [];
   const L = normLines(p.lines), frs = fracFields(L);
-  return frs.map((fr, i) => {
-    const o = openAt(L, fr), t = isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : 'Fast ramme';   // intet valgt = fast ramme
-    return t ? (frs.length > 1 ? `Ramme ${i + 1}: ` : 'Åbning: ') + t : '';
-  }).filter(Boolean);
+  const txt = frs.map(fr => { const o = openAt(L, fr); return isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : 'Fast ramme'; }); // intet valgt = fast ramme
+  if (frs.length === 1) return ['Åbning: ' + txt[0]];
+  // rammer med samme betegnelse samles: "Ramme 1, 3 og 6: Fast ramme"
+  const grp = new Map(); txt.forEach((t, i) => { if (!grp.has(t)) grp.set(t, []); grp.get(t).push(i + 1); });
+  const nr = a2 => a2.length > 1 ? a2.slice(0, -1).join(', ') + ' og ' + a2[a2.length - 1] : String(a2[0]);
+  return [...grp].map(([t, a2]) => `Ramme ${nr(a2)}: ${t}`);
 };
 const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
 const fastTxt = p => { if (aabningLines(p).length) return ''; const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };

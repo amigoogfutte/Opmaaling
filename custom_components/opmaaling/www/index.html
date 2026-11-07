@@ -131,7 +131,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.3.3';
+const APP_VERSION = '0.3.4';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -899,10 +899,10 @@ function renderSag() {
         <div class="grow"><div class="title">${esc(a.adresse)}</div><div class="muted">${a.pos.length} pos.</div></div>
         <div style="text-align:right;flex:none"><div><b>${ta.v}</b> <span class="muted">vinduer</span></div>
         <div><b>${ta.g}</b> <span class="muted">glas</span></div></div></div>`; }).join('')}
-    ${allPos(s).length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del hele sagen</button><button class="btn sec" id="copyTxt">Kopiér</button></div>` : ''}
+    ${allPos(s).length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del hele sagen som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}
     ${s.arkiveret ? '' : `<button class="btn sec" id="arkiver" style="margin-top:16px">Arkivér sag</button>`}`;
   $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
-  if (allPos(s).length) { $('#shareTxt').onclick = () => shareText(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
+  if (allPos(s).length) { $('#shareTxt').onclick = () => sharePDF(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
   $('#retSag').onclick = () => retSag(s);
   const ark = $('#arkiver'); if (ark) ark.onclick = () => arkiver(s, true);
   const re = $('#reopen'); if (re) re.onclick = () => arkiver(s, false);
@@ -942,9 +942,9 @@ function renderAdr() {
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
         ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
-    ${a.pos.length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del liste</button><button class="btn sec" id="copyTxt">Kopiér liste</button></div>` : ''}`;
+    ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}`;
   $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, a, a.pos.find(p => p.id === el.dataset.p)));
-  if (a.pos.length) { $('#shareTxt').onclick = () => shareText(s, a); $('#copyTxt').onclick = () => copyText(listText(s, a)); }
+  if (a.pos.length) { $('#shareTxt').onclick = () => sharePDF(s, a); $('#copyTxt').onclick = () => copyText(listText(s, a)); }
   $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas</button>`;
   $('#addPos').onclick = () => editPos(s, a, null);
   for (const p of a.pos) {
@@ -1411,6 +1411,100 @@ function showCopyBox(txt) {
   document.body.appendChild(bg); bg.querySelector('button').onclick = () => bg.remove();
   const ta = bg.querySelector('textarea'); ta.focus(); ta.select();
 }
+/* ============ PDF ============ */
+let jspdfLoad = null;
+function loadJsPDF() {
+  if (window.jspdf) return Promise.resolve(window.jspdf);
+  if (!jspdfLoad) jspdfLoad = new Promise((res, rej) => {
+    const sc = document.createElement('script'); sc.src = 'lib/jspdf.umd.min.js';
+    sc.onload = () => window.jspdf ? res(window.jspdf) : rej(new Error('jspdf')); sc.onerror = () => { jspdfLoad = null; rej(new Error('jspdf')); };
+    document.head.appendChild(sc);
+  });
+  return jspdfLoad;
+}
+// Oplysninger om en position som linjer til PDF'en
+function posLines(p) {
+  return [
+    `${p.type === 'glas' ? 'Glas' : 'Vindue'} · ${p.antal || 1} stk`,
+    `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm (målt midt på)`,
+    karmTxt(p), stafkTxt(p), symTxt(p), fastTxt(p),
+    p.ventil ? 'Med ventil' : '',
+    p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
+    tilTxt(p), pladeTxt(p), ...farveTxt(p),
+    p.note ? 'Note: ' + p.note : ''
+  ].filter(Boolean);
+}
+const antalTxt = t => `${t.v} ${t.v === 1 ? 'vindue' : 'vinduer'} og ${t.g} glas`;
+async function makePDF(s, only) {
+  const { jsPDF } = await loadJsPDF();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PW = 210, PH = 297, M = 15, BOT = PH - 16;
+  const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
+  const t = only ? totalsP(only.pos) : totals(s);
+  let y = M;
+  const text = (str, x0, size = 10, style = 'normal', color = [27, 31, 36]) => { doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...color); doc.text(String(str), x0, y); };
+  // Overskrift
+  doc.setFillColor(31, 95, 168); doc.rect(0, 0, PW, 26, 'F');
+  y = 12; text('Vinduesopmåling', M, 18, 'bold', [255, 255, 255]);
+  y = 20; text(`${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}`, M, 11, 'normal', [255, 255, 255]);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
+  doc.text(`Dato: ${new Date().toLocaleDateString('da-DK')}`, PW - M, 12, { align: 'right' });
+  y = 36;
+  text(only ? `Adresse: ${only.adresse}` : `${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}`, M, 11, 'bold');
+  y += 6; text(`I alt: ${antalTxt(t)}. Mål i mm, bredde × højde, målt midt på.`, M, 10);
+  y += 8;
+  for (const a of adrs) {
+    if (y > BOT - 40) { doc.addPage(); y = M; }
+    const ta = totalsP(a.pos);
+    doc.setFillColor(230, 238, 248); doc.rect(M, y - 5, PW - 2 * M, 9, 'F');
+    y += 1.5; text(a.adresse, M + 3, 12, 'bold', [23, 74, 132]);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(antalTxt(ta), PW - M - 3, y, { align: 'right' });
+    y += 9;
+    for (const p of a.pos) {
+      const c = await makeSketch(p, 700);
+      const imgW = 78, imgH = Math.min(95, imgW * c.height / c.width), iw = imgH < imgW * c.height / c.width ? imgH * c.width / c.height : imgW;
+      const lines = posLines(p).flatMap(l => doc.setFontSize(10) && doc.splitTextToSize(l, PW - M - (M + imgW + 6)));
+      const blockH = Math.max(imgH, 7 + lines.length * 5) + 6;
+      if (y + blockH > BOT) { doc.addPage(); y = M; }
+      doc.addImage(c.toDataURL('image/jpeg', 0.85), 'JPEG', M, y, iw, imgH);
+      const tx = M + imgW + 6; let ty = y + 5;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(27, 31, 36);
+      doc.text(`Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`, tx, ty); ty += 7;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      for (const l of lines) { doc.text(l, tx, ty); ty += 5; }
+      y += blockH;
+      doc.setDrawColor(223, 227, 232); doc.line(M, y - 3, PW - M, y - 3);
+    }
+    y += 4;
+  }
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 128, 140);
+    doc.text(`${sagLabel(s)}${only ? ' · ' + only.adresse : ''}`, M, PH - 8); doc.text(`Side ${i} af ${n}`, PW - M, PH - 8, { align: 'right' }); }
+  const safe = v => String(v || '').replace(/[^\wæøåÆØÅ-]+/g, '-').replace(/^-+|-+$/g, '');
+  const name = `Opmaaling-${safe(sagLabel(s).replace(/^Sag /, 'Sag-'))}${only ? '-' + safe(only.adresse) : ''}.pdf`;
+  return new File([doc.output('blob')], name, { type: 'application/pdf' });
+}
+async function sharePDF(s, only) {
+  toast('Laver PDF …');
+  let file;
+  try { file = await makePDF(s, only); }
+  catch (e) { toast('PDF kunne ikke laves – prøv igen med internet'); return; }
+  const title = `${sagLabel(s)}${only ? ' – ' + only.adresse : ''}`;
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title, text: `Opmåling: ${title}` }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  // Reserve (fx på computeren): gem/åbn PDF'en
+  const url = URL.createObjectURL(file);
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet"><h2>PDF er klar</h2><p class="muted">Gem filen og vedhæft den i en mail.</p>
+    <a class="btn" href="${url}" download="${esc(file.name)}" style="text-align:center;text-decoration:none;margin:8px 0">Gem PDF</a>
+    <a class="btn sec" href="${url}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;margin:8px 0">Åbn PDF</a>
+    <button class="btn sec" id="pdfClose" style="margin-top:10px">Luk</button></div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#pdfClose').onclick = () => { bg.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+}
+
 async function shareText(s, only) {
   const txt = listText(s, only);
   const adrs = only ? [only] : (s.adresser || []);

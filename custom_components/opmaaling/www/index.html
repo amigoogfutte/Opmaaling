@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.5';
+const APP_VERSION = '0.4.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -348,14 +348,18 @@ const openAt = (L, fr) => (L.open || []).find(o => inFr(fr, o.pt));
 const AABNING = { side: 'Sidehængt', top: 'Tophængt', topstyret: 'Topstyret', vende: 'Vendevindue', d180: '180° (vendbar om lodret akse)' };
 const openTxt = o => !o ? '' : o.type === 'side'
   ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''})` : (AABNING[o.type] || '');
+// Beskrivelse af rammerne: hver ramme med nummer og betegnelse (fast eller åbningsmåde)
+const harRammeInfo = p => { if (p.type === 'glas' || p.type === 'dor') return false; const L = normLines(p.lines); return (L.open || []).length > 0 || (L.fast || []).length > 0; };
 const aabningLines = p => {
-  if (p.type === 'glas') return [];
+  if (!harRammeInfo(p)) return [];
   const L = normLines(p.lines), frs = fracFields(L);
-  if (!(L.open || []).length) return [];
-  return frs.map((fr, i) => { const o = openAt(L, fr); return o && !isFast(L, fr) ? (frs.length > 1 ? `Ramme ${i + 1}: ` : 'Åbning: ') + openTxt(o) : ''; }).filter(Boolean);
+  return frs.map((fr, i) => {
+    const o = openAt(L, fr), t = isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : '';
+    return t ? (frs.length > 1 ? `Ramme ${i + 1}: ` : 'Åbning: ') + t : '';
+  }).filter(Boolean);
 };
 const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
-const fastTxt = p => { const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
+const fastTxt = p => { if (aabningLines(p).length) return ''; const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
 const isPartial = l => l.a > 0.001 || l.b < 0.999;
 const hasPartial = (L, t) => [...L.v, ...L.h].some(l => (!t || l.t === t) && isPartial(l));
 const r3 = v => Math.round(v * 1000) / 1000;
@@ -493,7 +497,7 @@ function plainDrawing(p, maxSide) {
   }
 
   if (dor) { x.fillStyle = '#8f99a6'; x.fillRect(0, h - fb, w, fb); }   // bundstykke
-  const visNr = !glas && !dor && (L.open || []).length > 0 && fields.length > 1;
+  const visNr = !glas && !dor && ((L.open || []).length > 0 || (L.fast || []).length > 0) && fields.length > 1;
   for (const [fi, { fr, px: [x0, x1, y0, y1] }] of fields.entries()) {
     if (x1 - x0 < 4 || y1 - y0 < 4) continue;
     const fast = !glas && isFast(L, fr);
@@ -1138,13 +1142,14 @@ function renderAdr() {
         ${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
         ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
+        ${aabningLines(p).map(t => `<div class="muted">${esc(t)}</div>`).join('')}
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
         ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
     ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}`;
   $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, a, a.pos.find(p => p.id === el.dataset.p)));
   if (a.pos.length) { $('#shareTxt').onclick = () => sharePDF(s, a); $('#copyTxt').onclick = () => copyText(listText(s, a)); }
-  $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas</button>`;
+  $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas/dør</button>`;
   $('#addPos').onclick = () => editPos(s, a, null);
   for (const p of a.pos) {
     const img = document.querySelector(`[data-thumb="${p.id}"]`);
@@ -1235,6 +1240,7 @@ const sketchExtra = p => {
   if (stafkTxt(p)) a.push(['#1b1f24', stafkTxt(p)]);
   if (symTxt(p)) a.push(['#1b1f24', symTxt(p)]);
   if (fastTxt(p)) a.push(['#1b1f24', fastTxt(p)]);
+  for (const t of aabningLines(p)) a.push(['#c0392b', t]);
   for (const f of farveTxt(p)) a.push(['#1b1f24', f]);
   if (tilTxt(p)) a.push(['#17694a', tilTxt(p)]);
   if (pladeTxt(p)) a.push(['#1b1f24', pladeTxt(p)]);

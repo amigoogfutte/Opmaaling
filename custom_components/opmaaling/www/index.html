@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.4';
+const APP_VERSION = '0.4.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -565,7 +565,7 @@ function plainDrawing(p, maxSide) {
       if (o && o.type === 'top') { ln(rx0, ry0, mx, ry1); ln(rx1, ry0, mx, ry1); }
       if (o && o.type === 'topstyret') {   // som tophængt, men linjerne starter ca. 10 cm nede på rammen
         const d = Math.min(100 * h / (+p.h || 1200), (ry1 - ry0) * 0.25);
-        ln(rx0, ry0 + d, mx, ry1); ln(rx1, ry0 + d, mx, ry1); }
+        ln(rx0, ry0 + d, mx, ry1); ln(rx1, ry0 + d, mx, ry1); ln(rx0, ry0 + d, rx1, ry0 + d); }
       if (o && o.type === 'vende') {   // vandret akse: stiplet ned, fuldt optrukket op
         x.setLineDash([lw * 6, lw * 2, lw, lw * 2]); ln(rx0 - gap, my, rx1 + gap, my);
         x.setLineDash([lw * 4, lw * 3]); ln(rx0, my, mx, ry1); ln(rx1, my, mx, ry1);

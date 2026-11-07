@@ -134,7 +134,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.5';
+const APP_VERSION = '0.5.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -569,12 +569,16 @@ function plainDrawing(p, maxSide) {
       x.restore();
       for (let i = 0; i < n; i++) panel(ix0 + i * pw + gap / 2, ix0 + (i + 1) * pw - gap / 2, iy0, iy1);
       x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.2; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
-      // zigzag i hver gruppe: starter i den side, fløjene foldes mod
+      // åbningstrekant pr. fløj som på en almindelig dør: første fløj (ved karmen i den side, der foldes mod)
+      // har åbning mod karmen og spids mod næste fløj, næste fløj omvendt, osv.
       for (const g of plan.grupper) {
-        x.beginPath();
-        const idx = []; for (let i = g.fra; i <= g.til; i++) idx.push(i); if (g.mod === 'h') idx.reverse();
-        idx.forEach((i, j) => { const xx = ix0 + i * pw, yy = j % 2 === 0 ? iy0 + rw : iy1 - rw; j === 0 ? x.moveTo(xx, yy) : x.lineTo(xx, yy); });
-        x.stroke();
+        for (let i = g.fra; i < g.til; i++) {
+          const j = g.mod === 'h' ? g.til - 1 - i : i - g.fra;           // nr. fra karmsiden
+          const a = ix0 + i * pw, b2 = a + pw;
+          const naer = g.mod === 'h' ? b2 : a, fjern = g.mod === 'h' ? a : b2; // kant mod karm / mod næste fløj
+          const base = j % 2 === 0 ? naer : fjern, spids = j % 2 === 0 ? fjern : naer;
+          x.beginPath(); x.moveTo(base, iy0 + rw); x.lineTo(spids, (iy0 + iy1) / 2); x.lineTo(base, iy1 - rw); x.stroke();
+        }
       }
       // almindelig dør i den ene side (lige antal fløje)
       if (plan.dor) {

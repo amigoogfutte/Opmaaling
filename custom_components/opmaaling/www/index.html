@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.9';
+const APP_VERSION = '0.5.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1663,7 +1663,11 @@ function posLines(p) {
     p.note ? 'Note: ' + p.note : ''
   ].filter(Boolean);
 }
-const antalTxt = t => [`${t.v} ${t.v === 1 ? 'vindue' : 'vinduer'}`, `${t.g} glas`, t.d ? `${t.d} ${t.d === 1 ? 'dør' : 'døre'}` : ''].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' og $1');
+// PDF: kun det, der er med (0 vinduer/glas/døre skrives ikke)
+const antalTxt = t => {
+  const dele = [t.v ? `${t.v} ${t.v === 1 ? 'vindue' : 'vinduer'}` : '', t.g ? `${t.g} glas` : '', t.d ? `${t.d} ${t.d === 1 ? 'dør' : 'døre'}` : ''].filter(Boolean);
+  return dele.length ? dele.join(', ').replace(/, ([^,]*)$/, ' og $1') : 'ingen positioner';
+};
 async function makePDF(s, only) {
   const { jsPDF } = await loadJsPDF();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });

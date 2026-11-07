@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.6.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -250,6 +250,13 @@ const DORTYPE = { hoved: 'Hoveddør', terrasse: 'Terrassedør', skyde: 'Skydedø
 const dKind = p => DORTYPE[p.dKind] ? p.dKind : 'hoved';
 const typeNavn = p => p.type === 'dor' ? DORTYPE[dKind(p)] : (TYPENAVN[p.type] || 'Vindue');
 const flojeAntal = p => Math.min(8, Math.max(3, parseInt(p.dFloj, 10) || 3));
+// Foldedør: antal fløje der giver fløjbredde 65–80 cm (bredde minus karm i begge sider)
+const FLOJ_MIN = 650, FLOJ_MAX = 800, KARM_MAX = 6000;
+function flojForslag(p) {
+  const B = +p.b; if (!B) return [];
+  const ib = B - 2 * (+p.kt || 0);
+  return [3, 4, 5, 6, 7, 8].map(n => ({ n, w: Math.round(ib / n) })).filter(o => o.w >= FLOJ_MIN && o.w <= FLOJ_MAX);
+}
 // Foldedør: grupper af fløje og evt. en almindelig dør i den ene side
 // dFoldDel: 'en' (alle til én side) | 'midt' (delt på midten); dFoldSide: 'v' | 'h' = siden fløjene foldes mod
 function foldPlan(p) {
@@ -1465,6 +1472,7 @@ function editPos(s, a, existing) {
       <div id="eDFlojWrap" style="display:flex;align-items:center;gap:10px;margin-top:8px"><span class="muted" style="flex:none">Antal fløje</span>
         <div class="seg" id="eDFloj" style="flex:1">${[3, 4, 5, 6, 7, 8].map(n => `<button type="button" data-v="${n}">${n}</button>`).join('')}</div></div>
       <div id="eDFoldWrap">
+        <div id="eDFlojHint" style="margin-top:6px;font-size:14px"></div>
         <div class="seg" id="eDFoldDel" style="margin-top:8px"><button type="button" data-v="en">Alle til én side</button><button type="button" data-v="midt">Delt på midten</button></div>
         <div class="seg" id="eDFoldGaa" style="margin-top:8px"><button type="button" data-v="v">Gående til venstre</button><button type="button" data-v="h">Gående til højre</button></div>
         <div class="seg" id="eDFoldSide" style="margin-top:8px"><button type="button" data-v="v">Foldes mod venstre</button><button type="button" data-v="h">Foldes mod højre</button></div>
@@ -1568,6 +1576,18 @@ function editPos(s, a, existing) {
     bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dRetn || 'ind')));
     bg.querySelectorAll('#eDSkyd button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dSkyd === 'h' ? 'h' : 'v')));
     bg.querySelectorAll('#eDFloj button').forEach(b2 => b2.classList.toggle('on', +b2.dataset.v === flojeAntal(p)));
+    if (k === 'folde') {
+      const fo = flojForslag(p), hint = bg.querySelector('#eDFlojHint'), ok = fo.some(o => o.n === flojeAntal(p));
+      bg.querySelectorAll('#eDFloj button').forEach(b2 => b2.style.opacity = !fo.length || fo.some(o => o.n === +b2.dataset.v) ? '' : '.45');
+      const ib = (+p.b || 0) - 2 * (+p.kt || 0), cur = flojeAntal(p), curW = Math.round(ib / cur);
+      if (!+p.b) hint.innerHTML = `<span class="muted">Skriv bredden, så regner jeg antal fløje ud (65–80 cm pr. fløj).</span>`;
+      else if (!fo.length) hint.innerHTML = `<span style="color:#c0392b">Ingen antal 3–8 giver fløje på 65–80 cm. ${cur} fløje = ${fmtMM(curW)} mm pr. fløj.</span>`;
+      else if (fo.length === 1) hint.innerHTML = ok ? `<span style="color:#1e8e5a">✓ Automatisk: ${cur} fløje à ca. ${fmtMM(curW)} mm</span>`
+        : `<span style="color:#c0392b">${cur} fløje = ${fmtMM(curW)} mm pr. fløj (uden for 65–80 cm). Forslag: ${fo[0].n} fløje à ${fmtMM(fo[0].w)} mm</span>`;
+      else hint.innerHTML = `<div style="color:${ok ? '#1e8e5a' : '#b26a00'};margin-bottom:4px">${ok ? '✓' : '⚠︎'} ${fo.length} muligheder – vælg:</div><div class="seg" id="eDFlojValg">${fo.map(o => `<button type="button" data-v="${o.n}" class="${o.n === cur ? 'on' : ''}">${o.n} fløje à ${fmtMM(o.w)} mm</button>`).join('')}</div>`;
+      if (+p.b > KARM_MAX) hint.insertAdjacentHTML('afterbegin', `<div style="color:#c0392b;font-weight:600;margin-bottom:4px">⚠︎ Karmen må max være 6 m – bredden er ${fmtMM(p.b)} mm</div>`);
+      hint.querySelectorAll('#eDFlojValg button').forEach(b2 => b2.onclick = () => { p.dFloj = +b2.dataset.v; updDor(); redraw(); });
+    }
     bg.querySelector('#eDGlas').checked = k === 'hoved' ? !!p.dGlas : p.dGlas !== false;
   };
   bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.onclick = () => { p.dHinge = b2.dataset.v; updDor(); redraw(); });
@@ -1575,7 +1595,7 @@ function editPos(s, a, existing) {
   bg.querySelector('#eDGlas').addEventListener('change', e => { p.dGlas = e.target.checked; redraw(); });
   bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.onclick = () => {
     p.dKind = c2.dataset.k; if (p.dKind !== 'hoved' && p.dGlas === undefined) p.dGlas = true;
-    if (p.dKind === 'folde' && !p.dFloj) p.dFloj = 3; updDor(); redraw(); });
+    if (p.dKind === 'folde' && !p.dFloj) { const fo = flojForslag(p); p.dFloj = fo.length ? fo[0].n : 3; } updDor(); redraw(); });
   bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.onclick = () => { p.dFoldDel = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDFoldGaa button').forEach(b2 => b2.onclick = () => { p.dFoldGaa = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDFoldSide button').forEach(b2 => b2.onclick = () => { p.dFoldSide = b2.dataset.v; updDor(); redraw(); });
@@ -1622,6 +1642,15 @@ function editPos(s, a, existing) {
     cv.width = c.width; cv.height = c.height; cv.getContext('2d').drawImage(c, 0, 0);
   }
   let rt = null;
+  // foldedør: sæt antal fløje automatisk ud fra bredden, når der kun er én mulighed (eller den valgte ikke passer)
+  for (const id of ['#eB', '#eKt']) bg.querySelector(id).addEventListener('input', () => {
+    if (p.type !== 'dor' || dKind(p) !== 'folde') return;
+    p.b = parseMM(bg.querySelector('#eB').value); p.kt = parseMM(bg.querySelector('#eKt').value);
+    const fo = flojForslag(p);
+    if (fo.length && !fo.some(o => o.n === flojeAntal(p))) p.dFloj = fo[0].n;
+    else if (!fo.length && +p.b) { const ib = +p.b - 2 * (+p.kt || 0); p.dFloj = ib < 3 * FLOJ_MIN ? 3 : ib > 8 * FLOJ_MAX ? 8 : flojeAntal(p); }
+    updDor();
+  });
   bg.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', () => { clearTimeout(rt); rt = setTimeout(redraw, 250); }));
   bg.querySelector('#eMinus').onclick = () => { const i = bg.querySelector('#eAnt'); i.value = Math.max(1, (parseInt(i.value, 10) || 1) - 1); redraw(); };
   bg.querySelector('#ePlus').onclick = () => { const i = bg.querySelector('#eAnt'); i.value = (parseInt(i.value, 10) || 0) + 1; redraw(); };

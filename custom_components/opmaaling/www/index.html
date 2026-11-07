@@ -508,7 +508,7 @@ const farveDel = (navn, k, r, ens) => {
   return `Farve ${navn}: karm ${k || '–'}, ramme ${r}`;
 };
 const farveTxt = p => [farveDel('ude', p.fuK, p.fuR, p.fuEns !== false), farveDel('inde', p.fiK, p.fiR, p.fiEns !== false)].filter(Boolean);
-const FARVER = ['Hvid', 'Hvid RAL 9010', 'Hvid RAL 9016', 'Antracitgrå RAL 7016', 'Sort RAL 9005', 'Grå RAL 7035', 'Rå træ', 'Teak', 'Mahogni'];
+const FARVER = ['Hvid', 'Hvid RAL 9010', 'Grå RAL 7035', 'Hvid RAL 9016', 'Cremehvid RAL 9001', 'Antracitgrå RAL 7016', 'Sort RAL 9005', 'Rå træ', 'Teak', 'Mahogni'];
 const sketchExtra = p => {
   const a = [];
   if (karmTxt(p)) a.push(['#1b1f24', karmTxt(p)]);

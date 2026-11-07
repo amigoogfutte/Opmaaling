@@ -134,7 +134,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.3';
+const APP_VERSION = '0.5.4';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -245,8 +245,30 @@ const totalsP = list => {
   return { v, g, d };
 };
 const TYPENAVN = { vindue: 'Vindue', glas: 'Glas', dor: 'Dør' };
-const typeNavn = p => TYPENAVN[p.type] || 'Vindue';
-const dorTxt = p => p.type !== 'dor' ? '' : [`Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', p.dGlas ? 'med glas' : 'uden glas'].join(', ');
+const DORTYPE = { hoved: 'Hoveddør', terrasse: 'Terrassedør', skyde: 'Skydedør', folde: 'Foldedør' };
+const dKind = p => DORTYPE[p.dKind] ? p.dKind : 'hoved';
+const typeNavn = p => p.type === 'dor' ? DORTYPE[dKind(p)] : (TYPENAVN[p.type] || 'Vindue');
+const flojeAntal = p => Math.min(8, Math.max(3, parseInt(p.dFloj, 10) || 3));
+// Dørens felter: hvilke felter er dørblade, og hvilke er fast sideparti
+function dorLeaves(p, L, frs) {
+  const k = dKind(p); if (k === 'skyde' || k === 'folde') return frs.map(() => null);
+  const dore = frs.map(fr => { const o = openAt(L, fr); return o && o.type === 'dor' ? o : null; });
+  if (dore.some(Boolean)) return dore.map(o => o && { hinge: o.hinge });
+  // intet valgt: det største felt er døren (som ikke er markeret som sideparti/fast)
+  let best = -1, areal = -1;
+  frs.forEach((fr, i) => { const o = openAt(L, fr); if (isFast(L, fr) || (o && o.type === 'sideparti')) return;
+    const a2 = (fr[1] - fr[0]) * (fr[3] - fr[2]); if (a2 > areal + 1e-6) { areal = a2; best = i; } });
+  return frs.map((_, i) => i === best ? { hinge: p.dHinge === 'h' ? 'h' : 'v' } : null);
+}
+const dorTxt = p => {
+  if (p.type !== 'dor') return '';
+  const k = dKind(p), L = normLines(p.lines), flere = fracFields(L).length > 1;
+  if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
+  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
+  const laas = [p.dLaas ? 'lås' : '', p.dSuppl ? 'suppleringslås' : ''].filter(Boolean);
+  return [flere ? '' : `Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad',
+    p.dGlas ? 'med glas' : 'uden glas', laas.length ? 'med ' + laas.join(' og ') : ''].filter(Boolean).join(', ');
+};
 const totals = s => totalsP(allPos(s));
 const fmtMM = n => (n || n === 0) && n !== '' ? String(Math.round(Number(n))) : '–';
 
@@ -350,16 +372,19 @@ const AABNING = { side: 'Sidehængt', top: 'Tophængt', topstyret: 'Topstyret', 
 const openTxt = o => !o ? '' : o.type === 'side'
   ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''})` : (AABNING[o.type] || '');
 // Beskrivelse af rammerne: hver ramme med nummer og betegnelse (fast eller åbningsmåde)
-const harRammeInfo = p => p.type !== 'glas' && p.type !== 'dor';
+const harRammeInfo = p => p.type !== 'glas' && (p.type !== 'dor' || (['hoved', 'terrasse'].includes(dKind(p)) && fracFields(normLines(p.lines)).length > 1));
 const aabningLines = p => {
   if (!harRammeInfo(p)) return [];
   const L = normLines(p.lines), frs = fracFields(L);
-  const txt = frs.map(fr => { const o = openAt(L, fr); return isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : 'Fast ramme'; }); // intet valgt = fast ramme
+  const dl = p.type === 'dor' ? dorLeaves(p, L, frs) : null;
+  const txt = frs.map((fr, i) => { const o = openAt(L, fr);
+    if (dl) return dl[i] ? `Dør (hængsel ${dl[i].hinge === 'h' ? 'højre' : 'venstre'})` : 'Fast sideparti';
+    return isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : 'Fast ramme'; }); // intet valgt = fast ramme
   if (frs.length === 1) return ['Åbning: ' + txt[0]];
   // rammer med samme betegnelse samles: "Ramme 1, 3 og 6: Fast ramme"
   const grp = new Map(); txt.forEach((t, i) => { if (!grp.has(t)) grp.set(t, []); grp.get(t).push(i + 1); });
   const nr = a2 => a2.length > 1 ? a2.slice(0, -1).join(', ') + ' og ' + a2[a2.length - 1] : String(a2[0]);
-  return [...grp].map(([t, a2]) => `Ramme ${nr(a2)}: ${t}`);
+  return [...grp].map(([t, a2]) => `${dl ? 'Felt' : 'Ramme'} ${nr(a2)}: ${t}`);
 };
 const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
 const fastTxt = p => { if (aabningLines(p).length) return ''; const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
@@ -500,20 +525,60 @@ function plainDrawing(p, maxSide) {
   }
 
   if (dor) { x.fillStyle = '#8f99a6'; x.fillRect(0, h - fb, w, fb); }   // bundstykke
-  const visNr = !glas && !dor && fields.length > 1;
+  const dk = dor ? dKind(p) : '';
+  // panel med ramme og glas (eller massivt), bruges til skyde- og foldedøre
+  const panel = (a, b2, c2, d) => {
+    x.fillStyle = RAMME; x.fillRect(a, c2, b2 - a, d - c2); x.strokeRect(a, c2, b2 - a, d - c2);
+    const i2 = rw * 1.2; x.fillStyle = p.dGlas !== false ? GLAS : '#f3efe8';
+    x.fillRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2); x.strokeRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2);
+  };
+  if (dk === 'skyde' || dk === 'folde') {
+    const ix0 = f + gap, ix1 = w - f - gap, iy0 = f + gap, iy1 = h - fb - gap, iw = ix1 - ix0;
+    x.save(); x.strokeStyle = '#c0392b'; x.fillStyle = '#c0392b'; x.lineWidth = lw * 1.3;
+    if (dk === 'skyde') {
+      // skydedør: et fast felt og et skydefelt; pilen viser hvilken vej den kører
+      const venstre = p.dSkyd !== 'h', ov = iw * 0.03, mid = ix0 + iw / 2;
+      x.restore();
+      if (venstre) { panel(ix0, mid + ov, iy0, iy1); panel(mid - ov, ix1, iy0, iy1); } else { panel(mid - ov, ix1, iy0, iy1); panel(ix0, mid + ov, iy0, iy1); }
+      x.save(); x.strokeStyle = '#c0392b'; x.fillStyle = '#c0392b'; x.lineWidth = lw * 1.3;
+      const cx = venstre ? (mid + ix1) / 2 : (ix0 + mid) / 2, cy = (iy0 + iy1) / 2, L2 = iw * 0.16, dir = venstre ? -1 : 1, a2 = Math.max(6, iw * 0.035);
+      x.beginPath(); x.moveTo(cx - dir * L2, cy); x.lineTo(cx + dir * L2, cy); x.stroke();
+      x.beginPath(); x.moveTo(cx + dir * L2, cy); x.lineTo(cx + dir * (L2 - a2), cy - a2 * 0.6); x.lineTo(cx + dir * (L2 - a2), cy + a2 * 0.6); x.closePath(); x.fill();
+      x.font = `700 ${Math.max(9, iw * 0.04)}px -apple-system, Helvetica, Arial, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillStyle = '#7a8aa3'; x.fillText('FAST', venstre ? (ix0 + mid) / 2 : (mid + ix1) / 2, iy1 - rw * 1.2 - Math.max(14, (iy1 - iy0) * 0.08));
+    } else {
+      // foldedør: n fløje; zigzag-linjen viser foldningen
+      const n = flojeAntal(p), pw = iw / n;
+      x.restore();
+      for (let i = 0; i < n; i++) panel(ix0 + i * pw + gap / 2, ix0 + (i + 1) * pw - gap / 2, iy0, iy1);
+      x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.2; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
+      x.beginPath();
+      for (let i = 0; i <= n; i++) { const xx = ix0 + i * pw, yy = i % 2 === 0 ? iy0 + rw : iy1 - rw; i === 0 ? x.moveTo(xx, yy) : x.lineTo(xx, yy); }
+      x.stroke(); x.setLineDash([]);
+      x.fillStyle = '#c0392b'; x.font = `700 ${Math.max(9, Math.min(iw, iy1 - iy0) * 0.045)}px -apple-system, Helvetica, Arial, sans-serif`;
+      x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText(`${n}-FLØJET · ${p.dRetn === 'ud' ? 'UDAD' : 'INDAD'}`, (ix0 + ix1) / 2, iy1 - 3);
+    }
+    x.restore();
+    fields.length = 0;   // de almindelige felter tegnes ikke
+  }
+  const dl = dor ? dorLeaves(p, L, fields.map(f2 => f2.fr)) : null;
+  const visNr = !glas && fields.length > 1;
   for (const [fi, { fr, px: [x0, x1, y0, y1] }] of fields.entries()) {
     if (x1 - x0 < 4 || y1 - y0 < 4) continue;
-    const fast = !glas && isFast(L, fr);
+    const leafInfo = dl ? dl[fi] : null;
+    const fast = !glas && (isFast(L, fr) || (dor && !leafInfo));   // dør: felter uden dørblad er fast sideparti
     const rx0 = x0 + gap, ry0 = y0 + gap, rx1 = x1 - gap, ry1 = y1 - gap;
     if (!glas && !fast) { x.fillStyle = RAMME; x.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0); x.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); }
-    const leaf = dor && !fast;                 // dørblad
+    const leaf = dor && !!leafInfo && !fast;   // dørblad
     const ins = fast ? rw * 0.3 : leaf ? rw * 1.6 : rw;   // fast felt: glasset sidder direkte i karmen (kun en glasliste)
     const gx0 = rx0 + ins, gy0 = ry0 + ins, gx1 = rx1 - ins, gy1 = ry1 - ins;
     if (gx1 - gx0 < 4 || gy1 - gy0 < 4) continue;
+    const nrDoer = () => { if (!visNr) return; x.save(); x.fillStyle = '#1f5fa8'; x.font = `700 ${Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.11)}px -apple-system, Helvetica, Arial, sans-serif`;
+      x.textBaseline = 'top'; const hv2 = leafInfo && leafInfo.hinge === 'h'; x.textAlign = hv2 ? 'left' : 'right'; x.fillText(String(fi + 1), hv2 ? gx0 + 3 : gx1 - 3, gy0 + 3); x.restore(); };
     if (leaf) {
       // dørblad: håndtag og åbningssymbol (linjerne går fra hængselsiden og mødes ved håndtaget)
       const drawLeaf = () => {
-        const hv = p.dHinge === 'h', hx = hv ? rx1 : rx0, ox = hv ? rx0 : rx1, my2 = (ry0 + ry1) / 2;
+        const hv = leafInfo.hinge === 'h', hx = hv ? rx1 : rx0, ox = hv ? rx0 : rx1, my2 = (ry0 + ry1) / 2;
         x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.1; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
         x.beginPath(); x.moveTo(hx, ry0); x.lineTo(ox, my2); x.lineTo(hx, ry1); x.stroke(); x.restore();
         const gxH = hv ? rx0 + rw * 0.8 : rx1 - rw * 0.8, gyH = ry0 + (ry1 - ry0) * 0.52;
@@ -528,7 +593,7 @@ function plainDrawing(p, maxSide) {
         const ip = Math.min(gx1 - gx0, gy1 - gy0) * 0.12;
         x.save(); x.strokeStyle = '#b8b0a2'; x.strokeRect(gx0 + ip, gy0 + ip, gx1 - gx0 - 2 * ip, (gy1 - gy0) * 0.45 - ip);
         x.strokeRect(gx0 + ip, gy0 + (gy1 - gy0) * 0.55, gx1 - gx0 - 2 * ip, (gy1 - gy0) * 0.45 - ip); x.restore();
-        drawLeaf(); continue;
+        drawLeaf(); nrDoer(); continue;
       }
       setTimeout(() => {}, 0);
       x._drawLeafAfter = drawLeaf;
@@ -560,7 +625,7 @@ function plainDrawing(p, maxSide) {
       else { if (s.c <= gy0 + ts || s.c >= gy1 - ts) continue; const a = Math.max(gx0, s.s), b = Math.min(gx1, s.e); if (b - a < 3) continue;
         x.fillRect(a, s.c - ts / 2, b - a, ts); x.strokeRect(a, s.c - ts / 2, b - a, ts); }
     }
-    if (leaf && x._drawLeafAfter) { x._drawLeafAfter(); x._drawLeafAfter = null; continue; }
+    if (leaf && x._drawLeafAfter) { x._drawLeafAfter(); x._drawLeafAfter = null; nrDoer(); continue; }
     // åbningssymbol: stiplede linjer med spidsen mod hængslerne
     const o = !glas && !fast ? openAt(L, fr) : null;
     if (o || visNr) {
@@ -671,13 +736,14 @@ function linesEditor(p, fu) {
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lType">Skift til sprosse</button><button class="btn danger small" id="lDel">Fjern valgt</button></div>
       <div id="lOpenRow" class="hidden" style="margin:2px 0 6px">
         <div style="font-size:12px;color:#bbb;margin-bottom:4px">Åbning for valgte ramme(r)</div>
-        <div class="chips" id="lOpen" style="margin:0 0 6px">
-          <button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
+        <div class="chips" id="lOpen" style="margin:0 0 6px">${p.type === 'dor'
+          ? `<button type="button" class="chip" data-o="dor">Dør</button><button type="button" class="chip" data-o="sideparti">Fast sideparti</button>`
+          : `<button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
           <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="topstyret">Topstyret</button><button type="button" class="chip" data-o="vende">Vendevindue</button><button type="button" class="chip" data-o="d180">180°</button>
-          <button type="button" class="chip" data-o="ingen">Ingen</button></div>
+          <button type="button" class="chip" data-o="ingen">Ingen</button>`}</div>
         <div id="lSideOpts" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <div class="seg" id="lHinge" style="flex:1 1 220px"><button type="button" data-h="v">Hængsel venstre</button><button type="button" data-h="h">Hængsel højre</button></div>
-          <label class="check small" style="margin:0;color:#111"><input type="checkbox" id="lBrems"> Bremse</label>
+          <label class="check small ${p.type === 'dor' ? 'hidden' : ''}" style="margin:0;color:#111"><input type="checkbox" id="lBrems"> Bremse</label>
         </div>
       </div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Fjern alle</button></div>
@@ -709,7 +775,7 @@ function linesEditor(p, fu) {
       box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
       for (const fr of fracFields(L)) {
         const o = openAt(L, fr), fast = isFast(L, fr); if (!fast && !o) continue;
-        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'topstyret' ? 'TOPSTYRET' : o.type === 'd180' ? '180°' : 'VENDEVINDUE';
+        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'topstyret' ? 'TOPSTYRET' : o.type === 'd180' ? '180°' : o.type === 'dor' ? `DØR – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}` : o.type === 'sideparti' ? 'FAST SIDEPARTI' : 'VENDEVINDUE';
         const el = document.createElement('div'); el.className = 'fsel';
         el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none`;
         el.innerHTML = `<span style="background:#ffcc00;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-bottom:8px;text-align:center">${txt}</span>`;
@@ -753,7 +819,7 @@ function linesEditor(p, fu) {
         const typer = frs.map(fr => isFast(L, fr) ? 'fast' : (openAt(L, fr) || {}).type || 'ingen');
         const fælles = typer.every(t2 => t2 === typer[0]) ? typer[0] : null;
         bg.querySelectorAll('#lOpen .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.o === fælles));
-        const sider = frs.map(fr => openAt(L, fr)).filter(o => o && o.type === 'side' && !isFast(L, frs.find(f2 => inFr(f2, o.pt))));
+        const sider = frs.map(fr => openAt(L, fr)).filter(o => o && (o.type === 'side' || o.type === 'dor') && !isFast(L, frs.find(f2 => inFr(f2, o.pt))));
         bg.querySelector('#lSideOpts').classList.toggle('hidden', !sider.length);
         if (sider.length) {
           bg.querySelectorAll('#lHinge button').forEach(b2 => b2.classList.toggle('on', sider.every(o => o.hinge === b2.dataset.h)));
@@ -899,12 +965,12 @@ function linesEditor(p, fu) {
         else if (t2 !== 'ingen') {
           // gæt hængselsiden: rammer i højre halvdel hængsles i højre side, ellers venstre
           const gaet = (fr[0] + fr[1]) / 2 > 0.501 ? 'h' : 'v';
-          L.open.push({ pt, type: t2, hinge: old && old.type === 'side' ? old.hinge : gaet, brems: t2 === 'side' && !!(old && old.brems) });
+          L.open.push({ pt, type: t2, hinge: old && (old.type === 'side' || old.type === 'dor') ? old.hinge : gaet, brems: t2 === 'side' && !!(old && old.brems) });
         }
       }
       draw();
     });
-    const sideSet = fn => { for (const fr of selFields()) { const o = openAt(L, fr); if (o && o.type === 'side') fn(o); } draw(); };
+    const sideSet = fn => { for (const fr of selFields()) { const o = openAt(L, fr); if (o && (o.type === 'side' || o.type === 'dor')) fn(o); } draw(); };
     bg.querySelectorAll('#lHinge button').forEach(b2 => b2.onclick = () => sideSet(o => { o.hinge = b2.dataset.h; }));
     bg.querySelector('#lBrems').onchange = e => sideSet(o => { o.brems = e.target.checked; });
     bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [] }; sel.clear(); selF = []; draw(); };
@@ -1014,7 +1080,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0, p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1288,11 +1354,17 @@ function editPos(s, a, existing) {
     <div class="sheet-top"><button id="eCancel">Annuller</button><h2>${isNew ? 'Ny position' : 'Pos. ' + p.nr}</h2><button class="save" id="eSave">Gem</button></div>
     <div class="seg" id="eType"><button data-t="vindue">Vindue</button><button data-t="glas">Glas</button><button data-t="dor">Dør</button></div>
     <div id="eDorOpts" class="hidden">
-      <div class="two" style="margin-top:8px">
-        <div class="seg" id="eDHinge"><button type="button" data-v="v">Hængsel venstre</button><button type="button" data-v="h">Hængsel højre</button></div>
+      <div class="chips" id="eDKind" style="margin-top:10px">${Object.entries(DORTYPE).map(([k, n]) => `<button type="button" class="chip" data-k="${k}">${n}</button>`).join('')}</div>
+      <div id="eDHingeWrap"><div class="seg" id="eDHinge"><button type="button" data-v="v">Hængsel venstre</button><button type="button" data-v="h">Hængsel højre</button></div></div>
+      <div id="eDSkydWrap"><div class="seg" id="eDSkyd"><button type="button" data-v="v">Venstregående</button><button type="button" data-v="h">Højregående</button></div></div>
+      <div id="eDFlojWrap" style="display:flex;align-items:center;gap:10px;margin-top:8px"><span class="muted" style="flex:none">Antal fløje</span>
+        <div class="seg" id="eDFloj" style="flex:1">${[3, 4, 5, 6, 7, 8].map(n => `<button type="button" data-v="${n}">${n}</button>`).join('')}</div></div>
+      <div id="eDRetnWrap"><div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div></div>
+      <label class="check"><input type="checkbox" id="eDGlas" ${p.dGlas ? 'checked' : ''}> Med glas</label>
+      <div id="eDLaasWrap" style="display:flex;gap:8px">
+        <label class="check" style="flex:1"><input type="checkbox" id="eDLaas" ${p.dLaas ? 'checked' : ''}> Lås</label>
+        <label class="check" style="flex:1"><input type="checkbox" id="eDSuppl" ${p.dSuppl ? 'checked' : ''}> Suppleringslås</label>
       </div>
-      <div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div>
-      <label class="check"><input type="checkbox" id="eDGlas" ${p.dGlas ? 'checked' : ''}> Med glas i dørbladet</label>
     </div>
     <div class="two">
       <div><label class="f">Pos. nr.</label><input inputmode="numeric" id="eNr" value="${esc(p.nr)}"></div>
@@ -1369,15 +1441,29 @@ function editPos(s, a, existing) {
   const updDor = () => {
     bg.querySelector('#ePladeRow').classList.toggle('hidden', p.type === 'dor');
     bg.querySelector('#eDorOpts').classList.toggle('hidden', p.type !== 'dor');
+    const k = dKind(p), vis = (id, on) => bg.querySelector(id).classList.toggle('hidden', !on);
+    bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.k === k));
+    vis('#eDHingeWrap', k === 'hoved' || k === 'terrasse'); vis('#eDRetnWrap', k !== 'skyde');
+    vis('#eDSkydWrap', k === 'skyde'); vis('#eDFlojWrap', k === 'folde'); vis('#eDLaasWrap', k === 'hoved');
     bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dHinge || 'v')));
     bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dRetn || 'ind')));
+    bg.querySelectorAll('#eDSkyd button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dSkyd === 'h' ? 'h' : 'v')));
+    bg.querySelectorAll('#eDFloj button').forEach(b2 => b2.classList.toggle('on', +b2.dataset.v === flojeAntal(p)));
+    bg.querySelector('#eDGlas').checked = k === 'hoved' ? !!p.dGlas : p.dGlas !== false;
   };
   bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.onclick = () => { p.dHinge = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.onclick = () => { p.dRetn = b2.dataset.v; updDor(); redraw(); });
   bg.querySelector('#eDGlas').addEventListener('change', e => { p.dGlas = e.target.checked; redraw(); });
+  bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.onclick = () => {
+    p.dKind = c2.dataset.k; if (p.dKind !== 'hoved' && p.dGlas === undefined) p.dGlas = true;
+    if (p.dKind === 'folde' && !p.dFloj) p.dFloj = 3; updDor(); redraw(); });
+  bg.querySelectorAll('#eDSkyd button').forEach(b2 => b2.onclick = () => { p.dSkyd = b2.dataset.v; updDor(); redraw(); });
+  bg.querySelectorAll('#eDFloj button').forEach(b2 => b2.onclick = () => { p.dFloj = +b2.dataset.v; updDor(); redraw(); });
+  bg.querySelector('#eDLaas').addEventListener('change', e => { p.dLaas = e.target.checked; redraw(); });
+  bg.querySelector('#eDSuppl').addEventListener('change', e => { p.dSuppl = e.target.checked; redraw(); });
   const setType = t => {
     p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t));
-    if (t === 'dor') { p.dHinge = p.dHinge || 'v'; p.dRetn = p.dRetn || 'ind'; }
+    if (t === 'dor') { p.dHinge = p.dHinge || 'v'; p.dRetn = p.dRetn || 'ind'; p.dKind = p.dKind || 'hoved'; }
     updDor(); if (typeof updSym === 'function') updSym(); redraw();
   };
   segBtns.forEach(b => b.onclick = () => setType(b.dataset.t));
@@ -1617,7 +1703,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }

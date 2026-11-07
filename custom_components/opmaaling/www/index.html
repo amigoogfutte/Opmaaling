@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.7';
+const APP_VERSION = '0.5.8';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1035,7 +1035,11 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
   const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
   const mL = p.type === 'glas' ? { v: [], h: [] } : applyMM(normLines(p.lines), p.b, p.h);
   const dimV = mL.v.filter(l => l.mm), dimH = mL.h.filter(l => l.mm);
-  const padL = Math.round(fs * (dimH.length ? 0.8 + 0.8 + 0.85 * dimH.length : 0.8)), padT = Math.round(fs * (2.2 + (dimV.length ? 0.8 + 0.85 * dimV.length : 0))), padB = Math.round(fs * (2.6 + (harPlade(p) ? 0.3 : 0) + 1.3 * extraLines.length));
+  const padL = Math.round(fs * (dimH.length ? 0.8 + 0.8 + 0.85 * dimH.length : 0.8)), padT = Math.round(fs * (2.2 + (dimV.length ? 0.8 + 0.85 * dimV.length : 0))), padB0 = Math.round(fs * (2.6 + (harPlade(p) ? 0.3 : 0) + 1.3 * extraLines.length));
+  // foldedør: plantegning set oppefra, lidt åben, under skitsen
+  const folde = p.type === 'dor' && dKind(p) === 'folde' && !fotoMode;
+  const planH = folde ? Math.round(body.width / flojeAntal(p) * 0.55 + fs * 3.2) : 0;
+  const padB = padB0 + planH;
   const ctxMeasure = document.createElement('canvas').getContext('2d');
   ctxMeasure.font = `600 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
   const hTxt = `${fmtMM(p.h)} mm`;
@@ -1109,6 +1113,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
   x.fillText(`B ${fmtMM(p.b)} mm`, (L + R) / 2, yb + fs * 0.35);
   x.textAlign = 'left'; x.textBaseline = 'middle';
   x.save(); x.fillText('H', xr + fs * 0.35, (T + Bt) / 2 - fs * 0.6); x.fillText(hTxt, xr + fs * 0.35, (T + Bt) / 2 + fs * 0.6); x.restore();
+  if (folde) tegnFoldePlan(x, p, L, R, yb + fs * 1.9, fs);
   const extra = extraLines;
   const maxW = W - padL * 2;
   const fit = t => { if (x.measureText(t).width <= maxW) return t; while (t.length > 3 && x.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; };
@@ -1116,6 +1121,43 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
   x.textAlign = 'left'; x.textBaseline = 'middle';
   extra.reverse().forEach(([col, t], i) => { x.fillStyle = col; x.fillText(fit(t), padL, H - fs * 0.75 - i * fs * 1.3); });
   return c;
+}
+// Plantegning af foldedør set oppefra, delvist åben: viser hvilken vej fløjene folder og hvor døren slår op
+function tegnFoldePlan(x, p, L, R, top, fs) {
+  const plan = foldPlan(p), n = plan.n, pw = (R - L) / n, ud = p.dRetn === 'ud';
+  const ang = 32 * Math.PI / 180, dx = pw * Math.cos(ang), dy = pw * Math.sin(ang);
+  const yLin = ud ? top + fs * 0.9 + dy : top + fs * 0.9;   // karmlinjen; fløjene står ud mod 'ude' (op) eller 'inde' (ned)
+  const s = ud ? -1 : 1;
+  x.save();
+  // ude/inde
+  x.font = `600 ${Math.round(fs * 0.7)}px -apple-system, Helvetica, Arial, sans-serif`; x.fillStyle = '#6b7280'; x.textBaseline = 'middle';
+  x.textAlign = 'left'; x.fillText('UDE', L, top + fs * 0.3); x.fillText('INDE', L, top + fs * 1.5 + dy + fs * 0.4);
+  x.textAlign = 'center'; x.fillText('SET OPPEFRA', (L + R) / 2, top + fs * 0.3);
+  // karm-stykker i hver side + stiplet åbning
+  const kt = Math.max(4, fs * 0.35), kw = Math.max(5, fs * 0.45);
+  x.fillStyle = '#8f99a6'; x.fillRect(L - kw, yLin - kt / 2, kw, kt); x.fillRect(R, yLin - kt / 2, kw, kt);
+  x.strokeStyle = '#9aa3ad'; x.lineWidth = 1; x.setLineDash([4, 4]); x.beginPath(); x.moveTo(L, yLin); x.lineTo(R, yLin); x.stroke(); x.setLineDash([]);
+  x.strokeStyle = '#2a3b55'; x.lineWidth = Math.max(3, fs * 0.22); x.lineCap = 'round';
+  // foldegrupper: zigzag fra karmen i den side, der foldes mod
+  for (const g of plan.grupper) {
+    const antal = g.til - g.fra, dir = g.mod === 'h' ? -1 : 1, x0 = g.mod === 'h' ? L + g.til * pw : L + g.fra * pw;
+    let px = x0, py = yLin; x.beginPath(); x.moveTo(px, py);
+    for (let j = 0; j < antal; j++) { px += dir * dx; py = j % 2 === 0 ? yLin + s * dy : yLin; x.lineTo(px, py); }
+    x.stroke();
+    // hængsler
+    x.fillStyle = '#c0392b'; px = x0; py = yLin;
+    for (let j = 0; j <= antal; j++) { if (j < antal || antal % 2 === 0) { x.beginPath(); x.arc(px, py, Math.max(3.5, fs * 0.2), 0, 2 * Math.PI); x.fill(); } px += dir * dx; py = j % 2 === 0 ? yLin + s * dy : yLin; }
+  }
+  // almindelig dør i den ene side: hængslet ved karmen, slået lidt op, med stiplet bue
+  if (plan.dor) {
+    const hx = plan.dor.hinge === 'h' ? R : L, dir = plan.dor.hinge === 'h' ? -1 : 1, da = 38 * Math.PI / 180;
+    x.beginPath(); x.moveTo(hx, yLin); x.lineTo(hx + dir * pw * Math.cos(da), yLin + s * pw * Math.sin(da)); x.stroke();
+    x.save(); x.lineWidth = 1.2; x.strokeStyle = '#c0392b'; x.setLineDash([4, 4]); x.beginPath();
+    const a0 = Math.atan2(0, dir), a1 = Math.atan2(s * Math.sin(da), dir * Math.cos(da));
+    x.arc(hx, yLin, pw, Math.min(a0, a1), Math.max(a0, a1)); x.stroke(); x.restore();
+    x.fillStyle = '#c0392b'; x.beginPath(); x.arc(hx, yLin, Math.max(2.5, fs * 0.14), 0, 2 * Math.PI); x.fill();
+  }
+  x.restore();
 }
 const thumbCache = new Map();
 async function thumbURL(p) {

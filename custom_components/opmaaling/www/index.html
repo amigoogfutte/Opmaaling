@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Opmåling">
+<meta name="theme-color" content="#1f5fa8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Vinduesopmåling</title>
+<style>
+  :root {
+    --blue: #1f5fa8; --blue-d: #174a84; --bg: #f2f4f7; --card: #fff; --text: #1b1f24;
+    --muted: #6b7280; --line: #e3e6eb; --red: #c0392b; --green: #1e8e5a;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--blue); color: #fff;
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px; display: flex; align-items: center; gap: 8px; min-height: 56px; }
+  header h1 { font-size: 19px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header button { background: rgba(255,255,255,.16); color: #fff; border: 0; border-radius: 10px;
+    padding: 8px 12px; font-size: 16px; }
+  main { padding: 12px; max-width: 720px; margin: 0 auto; }
+  .card { background: var(--card); border-radius: 14px; padding: 12px; margin-bottom: 10px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .grow { flex: 1; min-width: 0; }
+  .muted { color: var(--muted); font-size: 15px; }
+  .title { font-weight: 600; }
+  .clickable { cursor: pointer; }
+  .clickable:active { background: #eef3fa; }
+  .thumb { width: 78px; height: 78px; object-fit: contain; border-radius: 8px; background: #fff;
+    border: 1px solid var(--line); flex: none; }
+  .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+    background: #e6eef8; color: var(--blue-d); }
+  .tag.glas { background: #e5f5ee; color: #17694a; }
+  .summary { display: flex; gap: 10px; margin-bottom: 10px; }
+  .summary .card { flex: 1; text-align: center; margin: 0; }
+  .summary b { display: block; font-size: 26px; color: var(--blue); }
+  .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 17px;
+    font-weight: 600; background: var(--blue); color: #fff; }
+  .btn:active { background: var(--blue-d); }
+  .btn.sec { background: #e6eef8; color: var(--blue-d); }
+  .btn.danger { background: #fbeaea; color: var(--red); }
+  .btn.small { padding: 10px; font-size: 15px; }
+  .btns { display: flex; gap: 8px; margin: 8px 0; }
+  .btns .btn { flex: 1; }
+  .fab { position: fixed; left: 12px; right: 12px; width: auto; bottom: calc(14px + env(safe-area-inset-bottom));
+    max-width: 696px; margin: 0 auto; z-index: 6; box-shadow: 0 4px 14px rgba(31,95,168,.35); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
+  label.f { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 4px; }
+  input[type=text], input[type=number], input[inputmode], textarea {
+    width: 100%; font-size: 18px; padding: 12px; border: 1px solid #cfd5dd; border-radius: 10px; background: #fff;
+    font-family: inherit; color: var(--text); }
+  textarea { min-height: 70px; resize: vertical; }
+  input:focus, textarea:focus { outline: 2px solid var(--blue); border-color: transparent; }
+  .mm { position: relative; }
+  .mm span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+  .two { display: flex; gap: 10px; }
+  .two > div { flex: 1; }
+  .seg { display: flex; background: #e8ebf0; border-radius: 11px; padding: 3px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 10px; font-size: 16px; border-radius: 9px; color: var(--text); }
+  .seg button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .stepper { display: flex; align-items: center; gap: 0; }
+  .stepper button { width: 52px; height: 50px; font-size: 24px; border: 1px solid #cfd5dd; background: #fff; color: var(--blue); }
+  .stepper button:first-child { border-radius: 10px 0 0 10px; }
+  .stepper button:last-child { border-radius: 0 10px 10px 0; }
+  .stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; height: 50px; }
+  .sketch { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; display: block; }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet { background: var(--bg); width: 100%; max-width: 720px; max-height: 94vh; overflow-y: auto;
+    border-radius: 18px 18px 0 0; padding: 14px 14px calc(20px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+  .sheet h2 { margin: 2px 0 6px; font-size: 20px; }
+  .sheet-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: -14px;
+    background: var(--bg); padding: 4px 0 8px; z-index: 2; }
+  .sheet-top button { border: 0; background: none; font-size: 17px; color: var(--blue); padding: 8px 4px; }
+  .sheet-top button.save { font-weight: 700; }
+  .dialog-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .dialog { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 380px; }
+  .dialog p { margin: 0 0 12px; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + env(safe-area-inset-bottom));
+    background: #222; color: #fff; padding: 10px 16px; border-radius: 99px; z-index: 50; font-size: 15px; }
+  .photo-btns { display: flex; gap: 8px; }
+  .photo-btns label { flex: 1; text-align: center; }
+  .hidden { display: none !important; }
+  .warn { background: #fff7e0; border: 1px solid #f1d27a; color: #6b5300; font-size: 14px; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+  textarea.copy { font-size: 13px; min-height: 200px; }
+  .syncbar { font-size: 14px; padding: 9px 12px; border-radius: 10px; margin-bottom: 10px; cursor: pointer; }
+  .syncbar.ok { background: #e5f5ee; color: #17694a; }
+  .syncbar.busy { background: #eef1f5; color: #4b5563; }
+  .syncbar.offline { background: #eef1f5; color: #4b5563; }
+  .syncbar.login, .syncbar.error { background: #fff7e0; color: #6b5300; border: 1px solid #f1d27a; font-weight: 600; }
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<main id="main"></main>
+<div id="fabWrap"></div>
+<input type="file" id="fileCam" accept="image/*" capture="environment" class="hidden">
+<input type="file" id="fileLib" accept="image/*" class="hidden">
+<input type="file" id="fileImport" accept="application/json,.json" class="hidden">
+
+<script>
+"use strict";
+/* ============ Data og lagring ============ */
+let data = { sager: [] };
+let view = { name: 'home', sagId: null };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const store = {
+  db: null,
+  async open() {
+    if (this.db) return this.db;
+    this.db = await new Promise((res, rej) => {
+      const r = indexedDB.open('opmaaling', 2);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        if (!db.objectStoreNames.contains('fotos')) db.createObjectStore('fotos');
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    return this.db;
+  },
+  async get() {
+    try {
+      const db = await this.open();
+      return await new Promise((res, rej) => {
+        const t = db.transaction('kv').objectStore('kv').get('data');
+        t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error);
+      });
+    } catch (e) {
+      try { return JSON.parse(localStorage.getItem('opmaaling') || 'null'); } catch (e2) { return null; }
+    }
+  },
+  async set(v) {
+    try {
+      const db = await this.open();
+      await new Promise((res, rej) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(v, 'data');
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    } catch (e) {
+      try { localStorage.setItem('opmaaling', JSON.stringify(v)); }
+      catch (e2) { toast('Kunne ikke gemme – tag en backup'); }
+    }
+  }
+};
+let saveTimer = null;
+function save(skipSync) {
+  clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set(data), 150);
+  if (!skipSync) scheduleSync(2500);
+}
+const touch = s => { s.updated = Date.now(); };
+const liveSager = () => data.sager.filter(s => !s.deleted);
+
+/* Fotos gemmes for sig selv (nøgle = foto-id, værdi = data-URL) */
+const fotoMem = new Map();
+async function fotoTx(mode, fn) {
+  const db = await store.open();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('fotos', mode); const st = tx.objectStore('fotos');
+    let out; const r = fn(st); if (r) r.onsuccess = () => { out = r.result; };
+    tx.oncomplete = () => res(out); tx.onerror = () => rej(tx.error);
+  });
+}
+async function fotoURL(id) {
+  if (!id) return null;
+  if (fotoMem.has(id)) return fotoMem.get(id);
+  try { const u = await fotoTx('readonly', st => st.get(id)); if (u) fotoMem.set(id, u); return u || null; }
+  catch (e) { return null; }
+}
+async function fotoPut(id, url) {
+  fotoMem.set(id, url);
+  try { await fotoTx('readwrite', st => st.put(url, id)); } catch (e) { /* kun i hukommelsen */ }
+}
+async function fotoKeys() {
+  try { return new Set(await fotoTx('readonly', st => st.getAllKeys())); } catch (e) { return new Set(fotoMem.keys()); }
+}
+// Ældre data havde billedet direkte i positionen – flyt det til foto-lageret
+async function migrateFotos(list) {
+  let changed = false;
+  for (const sg of list) for (const p of (sg.pos || [])) {
+    if (p.foto && !p.fotoId) { const id = uid(); await fotoPut(id, p.foto); p.fotoId = id; changed = true; }
+    if ('foto' in p) { delete p.foto; changed = true; }
+  }
+  for (const sg of list) if (!sg.updated) { sg.updated = sg.oprettet || Date.now(); changed = true; }
+  return changed;
+}
+
+const sag = () => data.sager.find(s => s.id === view.sagId && !s.deleted);
+const totals = s => {
+  let v = 0, g = 0;
+  for (const p of s.pos) (p.type === 'glas' ? (g += p.antal || 0) : (v += p.antal || 0));
+  return { v, g };
+};
+const fmtMM = n => (n || n === 0) && n !== '' ? String(Math.round(Number(n))) : '–';
+
+/* ============ Små dialoger (i stedet for alert/confirm) ============ */
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+}
+function dialog({ text, input, value = '', ok = 'OK', cancel = 'Annuller', danger = false }) {
+  return new Promise(resolve => {
+    const bg = document.createElement('div'); bg.className = 'dialog-bg';
+    bg.innerHTML = `<div class="dialog"><p>${esc(text)}</p>
+      ${input ? `<input type="text" id="dlgIn" value="${esc(value)}" placeholder="${esc(input)}">` : ''}
+      <div class="btns" style="margin-top:14px">
+        ${cancel ? `<button class="btn sec" id="dlgNo">${esc(cancel)}</button>` : ''}
+        <button class="btn ${danger ? 'danger' : ''}" id="dlgOk">${esc(ok)}</button></div></div>`;
+    document.body.appendChild(bg);
+    const inp = bg.querySelector('#dlgIn');
+    if (inp) { setTimeout(() => inp.focus(), 50); inp.addEventListener('keydown', e => { if (e.key === 'Enter') done(true); }); }
+    function done(yes) { bg.remove(); resolve(yes ? (inp ? inp.value.trim() : true) : null); }
+    bg.querySelector('#dlgOk').onclick = () => done(true);
+    const no = bg.querySelector('#dlgNo'); if (no) no.onclick = () => done(false);
+  });
+}
+
+/* ============ Foto: indlæs og formindsk ============ */
+function loadImage(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+async function fileToDataURL(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const max = 1400, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.75);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ============ Skitse ud fra billedet ============ */
+const imgCache = new Map();
+async function photoImg(src) {
+  if (!imgCache.has(src)) imgCache.set(src, loadImage(src));
+  return imgCache.get(src);
+}
+// Laver en blyantstegning (kantdetektion) af billedet
+function edgeSketch(img, maxSide, crop) {
+  const cr = crop || { x: 0, y: 0, w: 1, h: 1 };
+  const sx = cr.x * img.naturalWidth, sy = cr.y * img.naturalHeight;
+  const sw = Math.max(4, cr.w * img.naturalWidth), sh = Math.max(4, cr.h * img.naturalHeight);
+  const sc = Math.min(1, maxSide / Math.max(sw, sh));
+  const w = Math.max(3, Math.round(sw * sc)), h = Math.max(3, Math.round(sh * sc));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+  const id = x.getImageData(0, 0, w, h), d = id.data, n = w * h;
+  const g = new Float32Array(n), b = new Float32Array(n), m = new Float32Array(n);
+  for (let i = 0; i < n; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  // let udglatning (3x3)
+  for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
+    let s = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += g[(y + dy) * w + xx + dx];
+    b[y * w + xx] = s / 9;
+  }
+  // Sobel
+  const hist = [];
+  for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
+    const i = y * w + xx;
+    const gx = -b[i - w - 1] - 2 * b[i - 1] - b[i + w - 1] + b[i - w + 1] + 2 * b[i + 1] + b[i + w + 1];
+    const gy = -b[i - w - 1] - 2 * b[i - w] - b[i - w + 1] + b[i + w - 1] + 2 * b[i + w] + b[i + w + 1];
+    m[i] = Math.sqrt(gx * gx + gy * gy);
+    if ((i & 7) === 0) hist.push(m[i]);
+  }
+  hist.sort((a, c2) => a - c2);
+  const p = Math.max(20, hist[Math.floor(hist.length * 0.93)] || 60);
+  for (let i = 0; i < n; i++) {
+    let v = Math.min(1, m[i] / p); v = Math.pow(v, 1.3);
+    const val = 255 - Math.round(v * 225);
+    d[i * 4] = val - Math.round(v * 40); d[i * 4 + 1] = val - Math.round(v * 20); d[i * 4 + 2] = val; d[i * 4 + 3] = 255;
+  }
+  x.putImageData(id, 0, 0);
+  return c;
+}
+// Simpel tegning når der ikke er billede
+function plainDrawing(p, maxSide) {
+  const B = +p.b || 1000, H = +p.h || 1200;
+  const r = Math.max(0.25, Math.min(4, H / B));
+  let w = maxSide, h = Math.round(maxSide * r);
+  if (h > maxSide) { h = maxSide; w = Math.round(maxSide / r); }
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+  const lw = Math.max(2, maxSide / 110);
+  x.strokeStyle = '#2a3b55'; x.lineWidth = lw;
+  x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
+  if (p.type === 'glas') {
+    x.strokeStyle = '#7aa6d6'; x.lineWidth = lw * 0.7;
+    x.beginPath(); x.moveTo(w * .2, h * .35); x.lineTo(w * .45, h * .15); x.moveTo(w * .25, h * .55); x.lineTo(w * .6, h * .25); x.stroke();
+  } else {
+    const f = Math.max(6, Math.min(w, h) * 0.07);
+    x.strokeRect(f, f, w - 2 * f, h - 2 * f);
+  }
+  return c;
+}
+// Samler billede/tegning med målpile og tekst
+async function makeSketch(p, maxSide = 700) {
+  let body = null;
+  const fu = p.fotoId ? await fotoURL(p.fotoId) : null;
+  if (fu) { try { body = edgeSketch(await photoImg(fu), maxSide, p.crop); } catch (e) { body = null; } }
+  if (!body) body = plainDrawing(p, Math.round(maxSide * 0.75));
+  const u = Math.max(body.width, body.height) / 700; // skala for tekst
+  const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
+  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * 2.6);
+  const ctxMeasure = document.createElement('canvas').getContext('2d');
+  ctxMeasure.font = `600 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
+  const hTxt = `${fmtMM(p.h)} mm`;
+  const padR = Math.round(ctxMeasure.measureText(hTxt).width + fs * 2);
+  const W = body.width + padL + padR, H = body.height + padT + padB;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+  x.drawImage(body, padL, padT);
+  // titel
+  x.fillStyle = '#1b1f24'; x.font = `700 ${fs}px -apple-system, Helvetica, Arial, sans-serif`; x.textBaseline = 'middle';
+  const t = `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`;
+  x.fillText(t, padL, padT / 2);
+  const typeTxt = `${p.type === 'glas' ? 'Glas' : 'Vindue'} · ${p.antal || 1} stk`;
+  x.font = `500 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`; x.fillStyle = '#6b7280';
+  x.textAlign = 'right'; x.fillText(typeTxt, W - fs * 0.5, padT / 2); x.textAlign = 'left';
+  // målpile
+  const col = '#c0392b'; x.strokeStyle = col; x.fillStyle = col; x.lineWidth = Math.max(2, fs / 10);
+  const a = fs * 0.45;
+  const arrow = (x1, y1, x2, y2) => {
+    x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); x.stroke();
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    for (const [px, py, an] of [[x1, y1, ang + Math.PI], [x2, y2, ang]]) {
+      x.beginPath(); x.moveTo(px, py);
+      x.lineTo(px - a * Math.cos(an - 0.4), py - a * Math.sin(an - 0.4));
+      x.lineTo(px - a * Math.cos(an + 0.4), py - a * Math.sin(an + 0.4)); x.closePath(); x.fill();
+    }
+  };
+  const L = padL, R = padL + body.width, T = padT, Bt = padT + body.height;
+  const yb = Bt + fs * 0.9;
+  x.setLineDash([4, 4]); x.lineWidth = 1.5;
+  x.beginPath(); x.moveTo(L, Bt); x.lineTo(L, yb + fs * .3); x.moveTo(R, Bt); x.lineTo(R, yb + fs * .3);
+  const xr = R + fs * 0.9;
+  x.moveTo(R, T); x.lineTo(xr + fs * .3, T); x.moveTo(R, Bt); x.lineTo(xr + fs * .3, Bt); x.stroke(); x.setLineDash([]);
+  x.lineWidth = Math.max(2, fs / 10);
+  arrow(L, yb, R, yb);
+  arrow(xr, T, xr, Bt);
+  x.font = `700 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
+  x.textAlign = 'center'; x.textBaseline = 'top';
+  x.fillText(`B ${fmtMM(p.b)} mm`, (L + R) / 2, yb + fs * 0.35);
+  x.textAlign = 'left'; x.textBaseline = 'middle';
+  x.save(); x.fillText('H', xr + fs * 0.35, (T + Bt) / 2 - fs * 0.6); x.fillText(hTxt, xr + fs * 0.35, (T + Bt) / 2 + fs * 0.6); x.restore();
+  return c;
+}
+const thumbCache = new Map();
+async function thumbURL(p) {
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  const c = await makeSketch(p, 260);
+  const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
+}
+
+/* ============ Visninger ============ */
+function render() {
+  if (view.name === 'sag' && sag()) renderSag(); else { view = { name: 'home' }; renderHome(); }
+  window.scrollTo(0, 0);
+}
+
+function renderHome() {
+  $('#hdr').innerHTML = `<h1>Vinduesopmåling</h1><button id="bkBtn">Backup</button>`;
+  $('#bkBtn').onclick = openBackup;
+  const list = liveSager().sort((a, b) => b.oprettet - a.oprettet);
+  $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
+    (list.length ? list.map(s => {
+      const t = totals(s);
+      return `<div class="card clickable row" data-id="${s.id}">
+        <div class="grow"><div class="title">${esc(s.navn)}</div>
+        <div class="muted">${new Date(s.oprettet).toLocaleDateString('da-DK')} · ${s.pos.length} pos.</div></div>
+        <div style="text-align:right"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
+        <div><b>${t.g}</b> <span class="muted">glas</span></div></div></div>`;
+    }).join('') : `<div class="empty">Ingen opmålinger endnu.<br>Tryk på <b>Ny opmåling</b> for at starte – fx med adressen eller kundens navn.</div>`);
+  $('#main').querySelectorAll('[data-id]').forEach(el => el.onclick = () => { view = { name: 'sag', sagId: el.dataset.id }; render(); });
+  $('#fabWrap').innerHTML = `<button class="btn fab" id="newSag">+ Ny opmåling</button>`;
+  $('#newSag').onclick = async () => {
+    const navn = await dialog({ text: 'Navn på opmålingen (fx adresse eller kunde)', input: 'Fx Strandvejen 12', ok: 'Opret' });
+    if (!navn) return;
+    const s = { id: uid(), navn, oprettet: Date.now(), updated: Date.now(), pos: [] };
+    data.sager.push(s); save(); view = { name: 'sag', sagId: s.id }; render();
+  };
+}
+
+async function renderSag() {
+  const s = sag(); const t = totals(s);
+  $('#hdr').innerHTML = `<button id="back">‹ Tilbage</button><h1>${esc(s.navn)}</h1><button id="more">•••</button>`;
+  $('#back').onclick = () => { view = { name: 'home' }; render(); };
+  $('#more').onclick = () => sagMenu(s);
+  $('#main').innerHTML = syncBarHTML() + `
+    <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
+    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div></div>
+    ${s.pos.length ? '' : `<div class="empty">Ingen positioner endnu.<br>Tryk på <b>Tilføj vindue/glas</b>.</div>`}
+    <div id="posList">${s.pos.map(p => `
+      <div class="card clickable row" data-p="${p.id}">
+        <img class="thumb" data-thumb="${p.id}" alt="">
+        <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
+        <div><span class="tag ${p.type === 'glas' ? 'glas' : ''}">${p.type === 'glas' ? 'Glas' : 'Vindue'}</span>
+        <span style="margin-left:6px">${p.antal} stk</span></div>
+        <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
+        ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
+      </div>`).join('')}</div>
+    ${s.pos.length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del liste</button><button class="btn sec" id="copyTxt">Kopiér liste</button></div>` : ''}`;
+  $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, s.pos.find(p => p.id === el.dataset.p)));
+  if (s.pos.length) { $('#shareTxt').onclick = () => shareText(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
+  $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas</button>`;
+  $('#addPos').onclick = () => editPos(s, null);
+  for (const p of s.pos) {
+    const img = document.querySelector(`[data-thumb="${p.id}"]`);
+    if (img) thumbURL(p).then(u => { img.src = u; }).catch(() => {});
+  }
+}
+
+async function sagMenu(s) {
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet"><h2>${esc(s.navn)}</h2>
+    <button class="btn sec" id="mRen" style="margin:8px 0">Omdøb</button>
+    <button class="btn sec" id="mRenum" style="margin:8px 0">Nummerér positioner forfra (1, 2, 3 …)</button>
+    <button class="btn danger" id="mDel" style="margin:8px 0">Slet opmåling</button>
+    <button class="btn" id="mClose" style="margin-top:14px">Luk</button></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.onclick = e => { if (e.target === bg) close(); };
+  $('#mClose').onclick = close;
+  $('#mRen').onclick = async () => { close(); const n = await dialog({ text: 'Nyt navn', input: 'Navn', value: s.navn, ok: 'Gem' }); if (n) { s.navn = n; touch(s); save(); render(); } };
+  $('#mRenum').onclick = () => { s.pos.forEach((p, i) => p.nr = i + 1); touch(s); save(); close(); render(); toast('Nummereret'); };
+  $('#mDel').onclick = async () => {
+    close();
+    if (await dialog({ text: `Slet "${s.navn}" med alle ${s.pos.length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
+      s.deleted = true; s.pos = []; touch(s); save(); view = { name: 'home' }; render();
+    }
+  };
+}
+
+/* ============ Redigér position ============ */
+function parseMM(v) { const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n) : ''; }
+
+function editPos(s, existing) {
+  const isNew = !existing;
+  const last = s.pos[s.pos.length - 1];
+  const p = existing ? { ...existing } : {
+    id: uid(), nr: s.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', antal: 1, note: '', fotoId: null
+  };
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet">
+    <div class="sheet-top"><button id="eCancel">Annuller</button><h2>${isNew ? 'Ny position' : 'Pos. ' + p.nr}</h2><button class="save" id="eSave">Gem</button></div>
+    <div class="seg" id="eType"><button data-t="vindue">Vindue</button><button data-t="glas">Glas</button></div>
+    <div class="two">
+      <div><label class="f">Pos. nr.</label><input inputmode="numeric" id="eNr" value="${esc(p.nr)}"></div>
+      <div style="flex:2.2"><label class="f">Rum / placering</label><input type="text" id="eRum" value="${esc(p.rum)}" placeholder="Fx Stue, mod syd" list="rumList"></div>
+    </div>
+    <datalist id="rumList">${[...new Set(liveSager().flatMap(x => x.pos.map(q => q.rum)).filter(Boolean))].map(r => `<option value="${esc(r)}">`).join('')}</datalist>
+    <div class="two">
+      <div><label class="f">Bredde (midt på)</label><div class="mm"><input inputmode="decimal" id="eB" value="${esc(p.b)}" placeholder="0"><span>mm</span></div></div>
+      <div><label class="f">Højde (midt på)</label><div class="mm"><input inputmode="decimal" id="eH" value="${esc(p.h)}" placeholder="0"><span>mm</span></div></div>
+    </div>
+    <label class="f">Antal ens</label>
+    <div class="stepper"><button id="eMinus" type="button">−</button><input inputmode="numeric" id="eAnt" value="${esc(p.antal)}"><button id="ePlus" type="button">+</button></div>
+    <label class="f">Billede</label>
+    <div class="photo-btns">
+      <label class="btn sec small" for="fileCam">📷 Tag billede</label>
+      <label class="btn sec small" for="fileLib">🖼 Vælg billede</label>
+    </div>
+    <div id="eSkWrap" style="margin-top:10px">
+      <canvas class="sketch" id="eSketch"></canvas>
+      <div class="btns hidden" id="ePhotoBtns">
+        <button class="btn sec small" id="eCrop">Markér vinduet</button>
+        <button class="btn sec small" id="eToggle">Vis foto</button>
+        <button class="btn danger small" id="eRmPhoto">Fjern billede</button>
+      </div>
+      <img id="ePhoto" class="sketch hidden" alt="">
+    </div>
+    <label class="f">Note</label>
+    <textarea id="eNote" placeholder="Fx åbner indad, skal have ventil …">${esc(p.note)}</textarea>
+    <div class="btns" style="margin-top:14px"><button class="btn sec" id="eShareSk">Del skitse</button></div>
+    ${isNew ? '' : `<button class="btn danger" id="eDel" style="margin-top:6px">Slet position</button>`}
+    <button class="btn" id="eSave2" style="margin-top:10px">Gem</button>
+  </div>`;
+  document.body.appendChild(bg);
+  document.body.style.overflow = 'hidden';
+  const close = () => { bg.remove(); document.body.style.overflow = ''; $('#fileCam').onchange = null; $('#fileLib').onchange = null; };
+
+  const segBtns = bg.querySelectorAll('#eType button');
+  const setType = t => { p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t)); redraw(); };
+  segBtns.forEach(b => b.onclick = () => setType(b.dataset.t));
+
+  const read = () => {
+    p.nr = parseInt(bg.querySelector('#eNr').value, 10) || p.nr;
+    p.rum = bg.querySelector('#eRum').value.trim();
+    p.b = parseMM(bg.querySelector('#eB').value);
+    p.h = parseMM(bg.querySelector('#eH').value);
+    p.antal = Math.max(1, parseInt(bg.querySelector('#eAnt').value, 10) || 1);
+    p.note = bg.querySelector('#eNote').value.trim();
+  };
+  let drawToken = 0;
+  async function redraw() {
+    read(); const my = ++drawToken;
+    const c = await makeSketch(p, 700);
+    if (my !== drawToken) return;
+    const cv = bg.querySelector('#eSketch'); if (!cv) return;
+    cv.width = c.width; cv.height = c.height; cv.getContext('2d').drawImage(c, 0, 0);
+  }
+  let rt = null;
+  bg.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', () => { clearTimeout(rt); rt = setTimeout(redraw, 250); }));
+  bg.querySelector('#eMinus').onclick = () => { const i = bg.querySelector('#eAnt'); i.value = Math.max(1, (parseInt(i.value, 10) || 1) - 1); redraw(); };
+  bg.querySelector('#ePlus').onclick = () => { const i = bg.querySelector('#eAnt'); i.value = (parseInt(i.value, 10) || 0) + 1; redraw(); };
+
+  const photoBtns = bg.querySelector('#ePhotoBtns'), photoEl = bg.querySelector('#ePhoto'), sketchEl = bg.querySelector('#eSketch');
+  let showPhoto = false, fu = null;
+  if (p.fotoId) fotoURL(p.fotoId).then(u => { fu = u; updPhotoUI(); redraw(); });
+  const updPhotoUI = () => {
+    photoBtns.classList.toggle('hidden', !fu);
+    photoEl.classList.toggle('hidden', !showPhoto || !fu);
+    sketchEl.classList.toggle('hidden', showPhoto && !!fu);
+    bg.querySelector('#eToggle').textContent = showPhoto ? 'Vis skitse' : 'Vis foto';
+    if (fu) photoEl.src = fu;
+  };
+  bg.querySelector('#eToggle').onclick = () => { showPhoto = !showPhoto; updPhotoUI(); };
+  bg.querySelector('#eRmPhoto').onclick = () => { p.fotoId = null; fu = null; p.crop = null; showPhoto = false; updPhotoUI(); redraw(); };
+  const doCrop = async () => { const c = await cropEditor(fu, p.crop); if (c) { p.crop = c; showPhoto = false; updPhotoUI(); redraw(); } };
+  bg.querySelector('#eCrop').onclick = doCrop;
+  const onFile = async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    try { const url = await fileToDataURL(f); const id = uid(); await fotoPut(id, url); p.fotoId = id; fu = url; p.crop = null; showPhoto = false; updPhotoUI(); redraw(); doCrop(); }
+    catch (err) { toast('Kunne ikke læse billedet'); }
+  };
+  $('#fileCam').onchange = onFile; $('#fileLib').onchange = onFile;
+
+  const doSave = () => {
+    read();
+    if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
+    const i = s.pos.findIndex(q => q.id === p.id);
+    if (i >= 0) s.pos[i] = p; else s.pos.push(p);
+    s.pos.sort((a, b) => a.nr - b.nr);
+    touch(s); save(); close(); render(); toast(isNew ? 'Position tilføjet' : 'Gemt');
+  };
+  bg.querySelector('#eSave').onclick = doSave; bg.querySelector('#eSave2').onclick = doSave;
+  bg.querySelector('#eCancel').onclick = close;
+  const del = bg.querySelector('#eDel');
+  if (del) del.onclick = async () => {
+    if (await dialog({ text: `Slet pos. ${p.nr}?`, ok: 'Slet', danger: true })) {
+      s.pos = s.pos.filter(q => q.id !== p.id); touch(s); save(); close(); render();
+    }
+  };
+  bg.querySelector('#eShareSk').onclick = async () => { read(); shareSketch(s, p); };
+
+  setType(p.type); updPhotoUI();
+  if (isNew) setTimeout(() => bg.querySelector('#eRum').focus(), 300);
+}
+
+/* ============ Markér vinduet på billedet (beskæring) ============ */
+function cropEditor(src, crop) {
+  return new Promise(resolve => {
+    const bg = document.createElement('div'); bg.className = 'dialog-bg'; bg.style.alignItems = 'stretch'; bg.style.padding = '0';
+    bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
+      <div style="text-align:center;font-weight:600;margin-bottom:4px">Markér vinduet</div>
+      <div style="text-align:center;font-size:14px;color:#bbb;margin-bottom:10px">Træk i hjørnerne, så rammen passer med det, der er målt.</div>
+      <div id="cWrap" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
+        <div id="cBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none">
+          <img id="cImg" src="${src}" style="display:block;max-width:100%;max-height:100%;pointer-events:none">
+          <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none"><div id="cRect" style="position:absolute;border:2px solid #ffcc00;box-shadow:0 0 0 9999px rgba(0,0,0,.45)"></div></div>
+        </div>
+      </div>
+      <div class="btns" style="margin-top:12px"><button class="btn sec" id="cAll">Hele billedet</button><button class="btn sec" id="cNo">Annuller</button><button class="btn" id="cOk">Færdig</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const box = bg.querySelector('#cBox'), img = bg.querySelector('#cImg'), rect = bg.querySelector('#cRect'), wrap = bg.querySelector('#cWrap');
+    let r = crop ? { ...crop } : { x: 0.08, y: 0.08, w: 0.84, h: 0.84 };
+    const H = 34;
+    const handles = ['nw', 'ne', 'sw', 'se'].map(k => {
+      const h = document.createElement('div'); h.dataset.k = k;
+      h.style.cssText = `position:absolute;width:${H}px;height:${H}px;margin:-${H / 2}px 0 0 -${H / 2}px;border-radius:50%;background:#ffcc00;border:3px solid #fff;touch-action:none`;
+      box.appendChild(h); return h;
+    });
+    const fit = () => {
+      const iw = img.naturalWidth, ih = img.naturalHeight; if (!iw) return;
+      const s = Math.min(wrap.clientWidth / iw, wrap.clientHeight / ih);
+      img.style.width = iw * s + 'px'; img.style.height = ih * s + 'px';
+      draw();
+    };
+    function draw() {
+      const W = img.clientWidth, Hh = img.clientHeight;
+      Object.assign(rect.style, { left: r.x * W + 'px', top: r.y * Hh + 'px', width: r.w * W + 'px', height: r.h * Hh + 'px' });
+      const pos = { nw: [r.x, r.y], ne: [r.x + r.w, r.y], sw: [r.x, r.y + r.h], se: [r.x + r.w, r.y + r.h] };
+      handles.forEach(h => { const [a, b] = pos[h.dataset.k]; h.style.left = a * W + 'px'; h.style.top = b * Hh + 'px'; });
+    }
+    if (img.complete) fit(); else img.onload = fit;
+    let drag = null;
+    const pt = e => { const b = img.getBoundingClientRect(); return [(e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height]; };
+    box.addEventListener('pointerdown', e => {
+      const k = e.target.dataset && e.target.dataset.k;
+      const [px, py] = pt(e);
+      if (k) drag = { k };
+      else if (px > r.x && px < r.x + r.w && py > r.y && py < r.y + r.h) drag = { k: 'move', ox: px - r.x, oy: py - r.y };
+      else return;
+      box.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    box.addEventListener('pointermove', e => {
+      if (!drag) return;
+      let [px, py] = pt(e); px = Math.min(1, Math.max(0, px)); py = Math.min(1, Math.max(0, py));
+      const min = 0.05; let x1 = r.x, y1 = r.y, x2 = r.x + r.w, y2 = r.y + r.h;
+      if (drag.k === 'move') {
+        const nx = Math.min(1 - r.w, Math.max(0, px - drag.ox)), ny = Math.min(1 - r.h, Math.max(0, py - drag.oy));
+        r.x = nx; r.y = ny; draw(); return;
+      }
+      if (drag.k.includes('w')) x1 = Math.min(px, x2 - min); else x2 = Math.max(px, x1 + min);
+      if (drag.k.includes('n')) y1 = Math.min(py, y2 - min); else y2 = Math.max(py, y1 + min);
+      r = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }; draw();
+    });
+    const end = () => { drag = null; };
+    box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+    window.addEventListener('resize', fit);
+    const done = v => { window.removeEventListener('resize', fit); bg.remove(); resolve(v); };
+    bg.querySelector('#cAll').onclick = () => { r = { x: 0, y: 0, w: 1, h: 1 }; draw(); };
+    bg.querySelector('#cNo').onclick = () => done(null);
+    bg.querySelector('#cOk').onclick = () => done({ x: +r.x.toFixed(4), y: +r.y.toFixed(4), w: +r.w.toFixed(4), h: +r.h.toFixed(4) });
+  });
+}
+
+/* ============ Del / kopiér ============ */
+function listText(s) {
+  const t = totals(s);
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.note ? ' (' + p.note + ')' : ''}`;
+  const v = s.pos.filter(p => p.type !== 'glas'), g = s.pos.filter(p => p.type === 'glas');
+  let out = `Opmåling: ${s.navn}\nDato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
+  if (v.length) out += `\nVINDUER – i alt ${t.v} stk\n` + v.map(line).join('\n') + '\n';
+  if (g.length) out += `\nGLAS – i alt ${t.g} stk\n` + g.map(line).join('\n') + '\n';
+  return out;
+}
+async function copyText(txt) {
+  try { await navigator.clipboard.writeText(txt); toast('Kopieret'); }
+  catch (e) { showCopyBox(txt); }
+}
+function showCopyBox(txt) {
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet"><h2>Kopiér teksten</h2><p class="muted">Markér teksten og vælg Kopiér.</p>
+    <textarea class="copy" readonly>${esc(txt)}</textarea><button class="btn" style="margin-top:10px">Luk</button></div>`;
+  document.body.appendChild(bg); bg.querySelector('button').onclick = () => bg.remove();
+  const ta = bg.querySelector('textarea'); ta.focus(); ta.select();
+}
+async function shareText(s) {
+  const txt = listText(s);
+  if (navigator.share) {
+    try {
+      // Prøv at dele tekst + skitser
+      const files = [];
+      if (navigator.canShare) {
+        for (const p of s.pos) {
+          const c = await makeSketch(p, 900);
+          const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+          if (blob) files.push(new File([blob], `pos-${p.nr}.jpg`, { type: 'image/jpeg' }));
+        }
+      }
+      const withFiles = files.length && navigator.canShare({ files, text: txt });
+      if (withFiles) {
+        const choice = await dialog({ text: 'Skal skitserne sendes med?', ok: 'Ja, med skitser', cancel: 'Kun tekst' });
+        if (choice) { await navigator.share({ title: 'Opmåling ' + s.navn, text: txt, files }); return; }
+      }
+      await navigator.share({ title: 'Opmåling ' + s.navn, text: txt }); return;
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  copyText(txt);
+}
+async function shareSketch(s, p) {
+  const c = await makeSketch(p, 1000);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  const file = blob && new File([blob], `pos-${p.nr}.jpg`, { type: 'image/jpeg' });
+  if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: `Pos. ${p.nr}` }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  // Reserve: vis billedet, så det kan gemmes med et langt tryk
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet"><h2>Skitse</h2><p class="muted">Hold fingeren på billedet for at gemme eller dele det.</p>
+    <img class="sketch" src="${c.toDataURL('image/jpeg', 0.9)}"><button class="btn" style="margin-top:10px">Luk</button></div>`;
+  document.body.appendChild(bg); bg.querySelector('button').onclick = () => bg.remove();
+}
+
+/* ============ Backup ============ */
+function openBackup() {
+  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet"><h2>Backup</h2>
+    <p class="muted">Gem en kopi af alle opmålinger (inkl. billeder) som en fil, fx i Filer eller på mail. Den kan indlæses igen, også på en anden telefon.</p>
+    <button class="btn" id="bExp" style="margin:8px 0">Gem backup</button>
+    <button class="btn sec" id="bImp" style="margin:8px 0">Indlæs backup</button>
+    <button class="btn sec" id="bClose" style="margin-top:14px">Luk</button></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.onclick = e => { if (e.target === bg) close(); };
+  $('#bClose').onclick = close;
+  $('#bExp').onclick = async () => {
+    const fotos = {};
+    for (const sg of liveSager()) for (const p of sg.pos) if (p.fotoId) { const u = await fotoURL(p.fotoId); if (u) fotos[p.fotoId] = u; }
+    const json = JSON.stringify({ app: 'opmaaling', version: 2, gemt: new Date().toISOString(), data, fotos });
+    const name = `opmaaling-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const file = new File([json], name, { type: 'application/json' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Backup af opmålinger' }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    if (onClaude) { showCopyBox(json); return; }
+    try {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); toast('Backup gemt');
+    } catch (e) { showCopyBox(json); }
+  };
+  $('#bImp').onclick = () => $('#fileImport').click();
+  $('#fileImport').onchange = async e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const obj = JSON.parse(await f.text());
+      const inc = obj && obj.data && Array.isArray(obj.data.sager) ? obj.data.sager : null;
+      if (!inc) throw new Error('format');
+      if (obj.fotos) for (const [id, u] of Object.entries(obj.fotos)) if (typeof u === 'string' && u.startsWith('data:image')) await fotoPut(id, u);
+      await migrateFotos(inc);
+      let added = 0;
+      for (const s of inc) {
+        if (!s || !Array.isArray(s.pos)) continue;
+        const i = data.sager.findIndex(x => x.id === s.id);
+        if (i >= 0) data.sager[i] = s; else data.sager.push(s);
+        if (!s.deleted) added++;
+      }
+      save(); close(); render(); toast(`${added} opmålinger indlæst`);
+    } catch (err) { toast('Filen kunne ikke læses'); }
+  };
+}
+
+/* ============ Home Assistant: login og synkronisering ============ */
+const HA = location.pathname.startsWith('/opmaaling-app/');
+const APP_BASE = location.origin + '/opmaaling-app/';
+const CLIENT_ID = APP_BASE;
+const REDIRECT_URI = APP_BASE + 'index.html';
+let syncState = { status: HA ? 'idle' : 'off', last: +localStorage.getItem('opm_lastSync') || 0, msg: '' };
+let syncing = false, syncAgain = false, syncTimer = null, renderPending = false;
+
+const authGet = () => { try { return JSON.parse(localStorage.getItem('opm_auth') || 'null'); } catch (e) { return null; } };
+const authSet = a => { try { a ? localStorage.setItem('opm_auth', JSON.stringify(a)) : localStorage.removeItem('opm_auth'); } catch (e) {} };
+
+async function tokenRequest(params) {
+  const r = await fetch('/auth/token', { method: 'POST', body: new URLSearchParams(params) });
+  if (!r.ok) { const e = new Error('auth ' + r.status); e.status = r.status; throw e; }
+  const j = await r.json();
+  return { access_token: j.access_token, refresh_token: j.refresh_token || params.refresh_token,
+           expires: Date.now() + (j.expires_in || 1800) * 1000, clientId: params.client_id };
+}
+// Når appen vises i Home Assistants sidemenu, kan den låne den indloggede brugers adgang
+async function parentToken() {
+  try {
+    if (!inFrame) return null;
+    const ha = window.parent.document.querySelector('home-assistant');
+    const a = ha && ha.hass && ha.hass.auth;
+    if (!a) return null;
+    if (a.expired) await a.refreshAccessToken();
+    return a.accessToken || null;
+  } catch (e) { return null; }
+}
+async function getToken(force) {
+  const pt = await parentToken(); if (pt) return pt;
+  let a = authGet();
+  if (!a) {
+    // Er man logget ind i Home Assistant i samme browser, kan det login bruges
+    try {
+      const h = JSON.parse(localStorage.getItem('hassTokens') || 'null');
+      if (h && h.refresh_token && h.clientId) a = { access_token: h.access_token, refresh_token: h.refresh_token, expires: h.expires || 0, clientId: h.clientId, borrowed: true };
+    } catch (e) {}
+  }
+  if (!a) return null;
+  if (!force && a.access_token && a.expires > Date.now() + 30000) return a.access_token;
+  try {
+    const n = await tokenRequest({ grant_type: 'refresh_token', refresh_token: a.refresh_token, client_id: a.clientId });
+    if (!a.borrowed) authSet(n);
+    return n.access_token;
+  } catch (e) {
+    if (e.status === 400 || e.status === 403) { if (!a.borrowed) authSet(null); return null; }
+    throw e; // netværksfejl
+  }
+}
+function startLogin() {
+  const state = uid();
+  try { localStorage.setItem('opm_state', state); } catch (e) {}
+  location.href = '/auth/authorize?response_type=code&client_id=' + encodeURIComponent(CLIENT_ID) +
+    '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) + '&state=' + encodeURIComponent(state);
+}
+async function handleLoginReturn() {
+  if (!HA) return;
+  const q = new URLSearchParams(location.search);
+  const code = q.get('code');
+  if (!code) return;
+  history.replaceState(null, '', location.pathname);
+  let expected = null; try { expected = localStorage.getItem('opm_state'); localStorage.removeItem('opm_state'); } catch (e) {}
+  if (expected && q.get('state') !== expected) { toast('Login mislykkedes – prøv igen'); return; }
+  try {
+    authSet(await tokenRequest({ grant_type: 'authorization_code', code, client_id: CLIENT_ID }));
+    toast('Logget ind');
+  } catch (e) { toast('Login mislykkedes – prøv igen'); }
+}
+async function api(path, opts = {}, retried) {
+  const t = await getToken(retried);
+  if (!t) { const e = new Error('login'); e.login = true; throw e; }
+  const r = await fetch('/api/opmaaling/' + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + t } });
+  if (r.status === 401 && !retried) return api(path, opts, true);
+  if (r.status === 401) { authSet(null); const e = new Error('login'); e.login = true; throw e; }
+  if (r.status === 404 && path === 'sager') { const e = new Error('mangler'); e.missing = true; throw e; }
+  return r;
+}
+async function dataURLtoBlob(u) { return (await fetch(u)).blob(); }
+function blobToDataURL(b) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
+}
+
+async function sync() {
+  if (!HA) return;
+  if (syncing) { syncAgain = true; return; }
+  if (!navigator.onLine) { setSync('offline'); return; }
+  syncing = true; setSync('busy');
+  let changedLocal = false;
+  try {
+    const remote = await (await api('sager')).json();
+    const rmap = new Map(remote.map(r => [r.id, r]));
+    // Hent nyere sager fra Home Assistant
+    for (const r of remote) {
+      const local = data.sager.find(s => s.id === r.id);
+      if (!local || (r.updated || 0) > (local.updated || 0)) {
+        const res = await api('sager/' + encodeURIComponent(r.id));
+        if (!res.ok) continue;
+        const sg = await res.json();
+        const i = data.sager.findIndex(s => s.id === sg.id);
+        if (i >= 0) data.sager[i] = sg; else data.sager.push(sg);
+        changedLocal = true;
+      }
+    }
+    // Send nyere sager til Home Assistant
+    for (const sg of data.sager) {
+      const r = rmap.get(sg.id);
+      if (!r || (sg.updated || 0) > (r.updated || 0)) {
+        const res = await api('sager/' + encodeURIComponent(sg.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sg) });
+        if (res.status === 409) {
+          const j = await res.json(); const i = data.sager.findIndex(s => s.id === sg.id);
+          if (j.sag && i >= 0) { data.sager[i] = j.sag; changedLocal = true; }
+        } else if (!res.ok) throw new Error('put ' + res.status);
+      }
+    }
+    if (changedLocal) save(true);
+    // Billeder: send dem, der mangler i HA, og hent dem, der mangler her
+    const rf = new Set(await (await api('fotos')).json());
+    const lf = await fotoKeys();
+    const used = new Set(); for (const sg of liveSager()) for (const p of sg.pos) if (p.fotoId) used.add(p.fotoId);
+    for (const id of used) {
+      if ((lf.has(id) || fotoMem.has(id)) && !rf.has(id)) {
+        const u = await fotoURL(id); if (!u) continue;
+        const res = await api('fotos/' + encodeURIComponent(id), { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: await dataURLtoBlob(u) });
+        if (!res.ok) throw new Error('foto ' + res.status);
+      } else if (!lf.has(id) && !fotoMem.has(id) && rf.has(id)) {
+        const res = await api('fotos/' + encodeURIComponent(id));
+        if (res.ok) { await fotoPut(id, await blobToDataURL(await res.blob())); changedLocal = true; }
+      }
+    }
+    syncState.last = Date.now(); try { localStorage.setItem('opm_lastSync', String(syncState.last)); } catch (e) {}
+    setSync('ok');
+  } catch (e) {
+    if (e.login) setSync('login');
+    else if (e.missing) setSync('error', 'Integrationen svarer ikke i Home Assistant');
+    else setSync(navigator.onLine ? 'error' : 'offline', navigator.onLine ? 'Kunne ikke synkronisere' : '');
+  } finally {
+    syncing = false;
+    if (changedLocal) rerenderSoon();
+    if (syncAgain) { syncAgain = false; scheduleSync(500); }
+  }
+}
+function rerenderSoon() {
+  // Rør ikke skærmen, mens man er i gang med at redigere
+  if (document.querySelector('.sheet-bg, .dialog-bg')) { renderPending = true; return; }
+  if (view.name === 'sag' && !sag()) view = { name: 'home' };
+  const y = window.scrollY; render(); window.scrollTo(0, y);
+}
+setInterval(() => { if (renderPending && !document.querySelector('.sheet-bg, .dialog-bg')) { renderPending = false; rerenderSoon(); } }, 1000);
+function scheduleSync(ms) { if (!HA) return; clearTimeout(syncTimer); syncTimer = setTimeout(sync, ms); }
+function startSync() {
+  if (!HA) return;
+  sync();
+  window.addEventListener('online', () => scheduleSync(500));
+  window.addEventListener('offline', () => setSync('offline'));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleSync(300); });
+  setInterval(() => { if (!document.hidden) sync(); }, 60000);
+}
+function syncText() {
+  const t = syncState.last ? new Date(syncState.last).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
+  switch (syncState.status) {
+    case 'busy': return ['busy', 'Synkroniserer …'];
+    case 'ok': return ['ok', 'Synkroniseret med Home Assistant ' + t];
+    case 'login': return ['login', 'Ikke logget ind – tryk her for at logge ind i Home Assistant'];
+    case 'offline': return ['offline', 'Ingen forbindelse – gemmes på telefonen og synkroniseres senere'];
+    case 'error': return ['error', (syncState.msg || 'Kunne ikke synkronisere') + ' – tryk for at prøve igen'];
+    default: return ['busy', 'Forbinder …'];
+  }
+}
+function syncBarHTML() {
+  if (!HA) return '';
+  const [cls, txt] = syncText();
+  return `<div id="syncBar" class="syncbar ${cls}">${esc(txt)}</div>`;
+}
+function setSync(status, msg = '') {
+  syncState.status = status; syncState.msg = msg;
+  const el = document.getElementById('syncBar');
+  if (el) { const [cls, txt] = syncText(); el.className = 'syncbar ' + cls; el.textContent = txt; }
+}
+document.addEventListener('click', e => {
+  if (e.target && e.target.id === 'syncBar') { syncState.status === 'login' ? startLogin() : sync(); }
+});
+
+/* ============ Start ============ */
+let inFrame = false;
+try { inFrame = window.self !== window.top; } catch (e) { inFrame = true; }
+const onClaude = /claude/i.test(location.hostname);
+(async () => {
+  const d = await store.get();
+  if (d && Array.isArray(d.sager)) data = d;
+  if (await migrateFotos(data.sager)) save(true);
+  await handleLoginReturn();
+  render();
+  startSync();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  if ('serviceWorker' in navigator && !onClaude && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>

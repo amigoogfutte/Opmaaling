@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Vinduesopmåling",
+        "description": "Gemmer opmålinger fra Vinduesopmåling-appen i Home Assistant. Appen findes i sidemenuen under Opmåling."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Vinduesopmåling er allerede sat op."
+    }
+  }
+}

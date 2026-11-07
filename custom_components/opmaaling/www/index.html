@@ -544,7 +544,7 @@ async function makeSketch(p, maxSide = 700) {
   if (!body) body = plainDrawing(p, Math.round(maxSide * 0.75));
   const u = Math.max(body.width, body.height) / 700; // skala for tekst
   const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
-  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (2.6 + 1.3 * sketchExtra(p).length));
+  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (2.6 + (harPlade(p) ? 0.3 : 0) + 1.3 * sketchExtra(p).length));
   const ctxMeasure = document.createElement('canvas').getContext('2d');
   ctxMeasure.font = `600 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
   const hTxt = `${fmtMM(p.h)} mm`;
@@ -582,7 +582,13 @@ async function makeSketch(p, maxSide = 700) {
     if (all || sd.includes('top')) x.fillRect(L, T, R - L, tw);
   }
   x.fillStyle = col;
-  const yb = Bt + fs * 0.9;
+  // vindueplade: en streg i bunden, lidt bredere end vinduet
+  if (harPlade(p)) {
+    const ov = Math.min(fs * 0.5, padL - 2), th = Math.max(6, fs * 0.45);
+    x.fillStyle = '#6b5a45'; x.fillRect(L - ov, Bt + 1, R - L + 2 * ov, th);
+  }
+  x.fillStyle = col;
+  const yb = Bt + fs * (harPlade(p) ? 1.2 : 0.9);
   x.setLineDash([4, 4]); x.lineWidth = 1.5;
   x.beginPath(); x.moveTo(L, Bt); x.lineTo(L, yb + fs * .3); x.moveTo(R, Bt); x.lineTo(R, yb + fs * .3);
   const xr = R + fs * 0.9;

@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -345,9 +345,9 @@ const inFr = (fr, [fx, fy]) => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <
 const isFast = (L, fr) => (L.fast || []).some(q => inFr(fr, q));
 // Åbningsmåde pr. ramme: sidehængt (hængsel v/h, bremse, 180°), tophængt, vendevindue
 const openAt = (L, fr) => (L.open || []).find(o => inFr(fr, o.pt));
-const AABNING = { side: 'Sidehængt', top: 'Tophængt', vende: 'Vendevindue' };
+const AABNING = { side: 'Sidehængt', top: 'Tophængt', vende: 'Vendevindue', d180: '180° (vendbar om lodret akse)' };
 const openTxt = o => !o ? '' : o.type === 'side'
-  ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''}${o.d180 ? ', 180°' : ''})` : (AABNING[o.type] || '');
+  ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''})` : (AABNING[o.type] || '');
 const aabningLines = p => {
   if (p.type === 'glas') return [];
   const L = normLines(p.lines), frs = fracFields(L);
@@ -364,7 +364,7 @@ const packLines = L => {
   const pk = arr => arr.slice().sort((x, y) => x.p - y.p || x.a - y.a).map(l => ({
     p: r3(l.p), t: l.t, ...(isPartial(l) ? { a: r3(l.a), b: r3(l.b) } : {}), ...(l.mm ? { mm: l.mm, fra: l.fra || 'start' } : {}) }));
   const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]);
-  if (L.open && L.open.length) out.open = L.open.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], type: o.type, hinge: o.hinge, brems: o.brems || undefined, d180: o.d180 || undefined }));
+  if (L.open && L.open.length) out.open = L.open.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], type: o.type, hinge: o.hinge, brems: o.brems || undefined }));
   return out;
 };
 
@@ -504,11 +504,11 @@ function plainDrawing(p, maxSide) {
     const gx0 = rx0 + ins, gy0 = ry0 + ins, gx1 = rx1 - ins, gy1 = ry1 - ins;
     if (gx1 - gx0 < 4 || gy1 - gy0 < 4) continue;
     if (leaf) {
-      // dørblad: håndtag og åbningssymbol (spidsen mod hængslerne)
+      // dørblad: håndtag og åbningssymbol (linjerne går fra hængselsiden og mødes ved håndtaget)
       const drawLeaf = () => {
         const hv = p.dHinge === 'h', hx = hv ? rx1 : rx0, ox = hv ? rx0 : rx1, my2 = (ry0 + ry1) / 2;
         x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.1; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
-        x.beginPath(); x.moveTo(ox, ry0); x.lineTo(hx, my2); x.lineTo(ox, ry1); x.stroke(); x.restore();
+        x.beginPath(); x.moveTo(hx, ry0); x.lineTo(ox, my2); x.lineTo(hx, ry1); x.stroke(); x.restore();
         const gxH = hv ? rx0 + rw * 0.8 : rx1 - rw * 0.8, gyH = ry0 + (ry1 - ry0) * 0.52;
         x.save(); x.fillStyle = '#4b5563'; x.fillRect(gxH - lw * 1.5, gyH - lw * 1.5, lw * 3, lw * 3);
         x.fillRect(hv ? gxH : gxH - rw * 0.9, gyH - lw, rw * 0.9, lw * 2); x.restore();
@@ -560,16 +560,23 @@ function plainDrawing(p, maxSide) {
       x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.1; x.setLineDash([lw * 4, lw * 3]);
       const mx = (rx0 + rx1) / 2, my = (ry0 + ry1) / 2;
       const ln = (a, b2, c2, d) => { x.beginPath(); x.moveTo(a, b2); x.lineTo(c2, d); x.stroke(); };
-      if (o && o.type === 'side') { const hx = o.hinge === 'h' ? rx1 : rx0, ox = o.hinge === 'h' ? rx0 : rx1; ln(ox, ry0, hx, my); ln(ox, ry1, hx, my); }
-      if (o && o.type === 'top') { ln(rx0, ry1, mx, ry0); ln(rx1, ry1, mx, ry0); }
-      if (o && o.type === 'vende') { x.setLineDash([lw * 6, lw * 2, lw, lw * 2]); ln(rx0 - gap, my, rx1 + gap, my); x.setLineDash([]);
-        x.beginPath(); x.arc(mx, my, Math.min(rx1 - rx0, ry1 - ry0) * 0.12, Math.PI * 0.2, Math.PI * 1.6); x.stroke(); }
+      // linjerne går fra hængselsiden og mødes i siden med grebet
+      if (o && o.type === 'side') { const hx = o.hinge === 'h' ? rx1 : rx0, ox = o.hinge === 'h' ? rx0 : rx1; ln(hx, ry0, ox, my); ln(hx, ry1, ox, my); }
+      if (o && o.type === 'top') { ln(rx0, ry0, mx, ry1); ln(rx1, ry0, mx, ry1); }
+      if (o && o.type === 'vende') {   // vandret akse: stiplet ned, fuldt optrukket op
+        x.setLineDash([lw * 6, lw * 2, lw, lw * 2]); ln(rx0 - gap, my, rx1 + gap, my);
+        x.setLineDash([lw * 4, lw * 3]); ln(rx0, my, mx, ry1); ln(rx1, my, mx, ry1);
+        x.setLineDash([]); ln(rx0, my, mx, ry0); ln(rx1, my, mx, ry0); }
+      if (o && o.type === 'd180') {    // lodret akse: som vendevindue, drejet
+        x.setLineDash([lw * 6, lw * 2, lw, lw * 2]); ln(mx, ry0 - gap, mx, ry1 + gap);
+        x.setLineDash([lw * 4, lw * 3]); ln(mx, ry0, rx0, my); ln(mx, ry1, rx0, my);
+        x.setLineDash([]); ln(mx, ry0, rx1, my); ln(mx, ry1, rx1, my); }
       x.setLineDash([]);
       const fz = Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.11);
       x.font = `700 ${fz}px -apple-system, Helvetica, Arial, sans-serif`; x.textBaseline = 'top';
-      if (o && o.type === 'side' && (o.brems || o.d180)) {
+      if (o && o.type === 'side' && o.brems) {
         x.fillStyle = '#c0392b'; x.textAlign = o.hinge === 'h' ? 'right' : 'left';
-        x.fillText([o.d180 ? '180°' : '', o.brems ? 'bremse' : ''].filter(Boolean).join(' · '), o.hinge === 'h' ? gx1 - 3 : gx0 + 3, gy0 + 3);
+        x.fillText('bremse', o.hinge === 'h' ? gx1 - 3 : gx0 + 3, gy0 + 3);
       }
       if (visNr) { x.fillStyle = '#1f5fa8'; x.textAlign = o && o.type === 'side' && o.hinge === 'h' ? 'left' : 'right';
         x.fillText(String(fi + 1), o && o.type === 'side' && o.hinge === 'h' ? gx0 + 3 : gx1 - 3, gy0 + 3); }
@@ -656,12 +663,11 @@ function linesEditor(p, fu) {
         <div style="font-size:12px;color:#bbb;margin-bottom:4px">Åbning for valgte ramme(r)</div>
         <div class="chips" id="lOpen" style="margin:0 0 6px">
           <button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
-          <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="vende">Vendevindue</button>
+          <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="vende">Vendevindue</button><button type="button" class="chip" data-o="d180">180°</button>
           <button type="button" class="chip" data-o="ingen">Ingen</button></div>
         <div id="lSideOpts" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <div class="seg" id="lHinge" style="flex:1 1 220px"><button type="button" data-h="v">Hængsel venstre</button><button type="button" data-h="h">Hængsel højre</button></div>
           <label class="check small" style="margin:0;color:#111"><input type="checkbox" id="lBrems"> Bremse</label>
-          <label class="check small" style="margin:0;color:#111"><input type="checkbox" id="lD180"> 180°</label>
         </div>
       </div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Fjern alle</button></div>
@@ -693,7 +699,7 @@ function linesEditor(p, fu) {
       box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
       for (const fr of fracFields(L)) {
         const o = openAt(L, fr), fast = isFast(L, fr); if (!fast && !o) continue;
-        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT ${o.hinge === 'h' ? '▶' : '◀'}${o.brems ? ' · BREMSE' : ''}${o.d180 ? ' · 180°' : ''}` : o.type === 'top' ? 'TOPHÆNGT ▲' : 'VENDEVINDUE';
+        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'd180' ? '180°' : 'VENDEVINDUE';
         const el = document.createElement('div'); el.className = 'fsel';
         el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none`;
         el.innerHTML = `<span style="background:#ffcc00;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-bottom:8px;text-align:center">${txt}</span>`;
@@ -741,7 +747,7 @@ function linesEditor(p, fu) {
         bg.querySelector('#lSideOpts').classList.toggle('hidden', !sider.length);
         if (sider.length) {
           bg.querySelectorAll('#lHinge button').forEach(b2 => b2.classList.toggle('on', sider.every(o => o.hinge === b2.dataset.h)));
-          bg.querySelector('#lBrems').checked = sider.every(o => o.brems); bg.querySelector('#lD180').checked = sider.every(o => o.d180);
+          bg.querySelector('#lBrems').checked = sider.every(o => o.brems);
         }
       }
       bg.querySelector('#lAddVS').textContent = nf ? `+ Lodret sprosse i ramme${nf > 1 ? 'r' : ''}` : '+ Lodret sprosse';
@@ -865,14 +871,13 @@ function linesEditor(p, fu) {
         const old = openAt(L, fr), pt = [r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)];
         L.fast = L.fast.filter(q => !inFr(fr, q)); L.open = L.open.filter(o => !inFr(fr, o.pt));
         if (t2 === 'fast') L.fast.push(pt);
-        else if (t2 !== 'ingen') L.open.push({ pt, type: t2, hinge: old && old.hinge || 'v', brems: t2 === 'side' && !!(old && old.brems), d180: t2 === 'side' && !!(old && old.d180) });
+        else if (t2 !== 'ingen') L.open.push({ pt, type: t2, hinge: old && old.hinge || 'v', brems: t2 === 'side' && !!(old && old.brems) });
       }
       draw();
     });
     const sideSet = fn => { for (const fr of selFields()) { const o = openAt(L, fr); if (o && o.type === 'side') fn(o); } draw(); };
     bg.querySelectorAll('#lHinge button').forEach(b2 => b2.onclick = () => sideSet(o => { o.hinge = b2.dataset.h; }));
     bg.querySelector('#lBrems').onchange = e => sideSet(o => { o.brems = e.target.checked; });
-    bg.querySelector('#lD180').onchange = e => sideSet(o => { o.d180 = e.target.checked; });
     bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [] }; sel.clear(); selF = []; draw(); };
     bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open; L = normLines(detectLines(img, p.crop)); L.fast = fast; L.open = open; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);

@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.6.4';
+const APP_VERSION = '0.6.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1497,7 +1497,8 @@ function formDialog(title, fields, ok) {
   });
 }
 
-const karmTxt = p => (p.kd || p.kt) ? 'Karm: ' + [p.kd ? 'dybde ' + fmtMM(p.kd) : '', p.kt ? 'tykkelse ' + fmtMM(p.kt) : ''].filter(Boolean).join(' × ') + ' mm' : '';
+const karmTxt = p => p.type === 'glas' ? '' : karmTxt0(p);
+const karmTxt0 = p => (p.kd || p.kt) ? 'Karm: ' + [p.kd ? 'dybde ' + fmtMM(p.kd) : '', p.kt ? 'tykkelse ' + fmtMM(p.kt) : ''].filter(Boolean).join(' × ') + ' mm' : '';
 
 const SIDER = [['venstre', 'Venstre'], ['hoejre', 'Højre'], ['top', 'Top'], ['rundt', '3 sider']];
 const siderTxt = p => {
@@ -1508,7 +1509,7 @@ const siderTxt = p => {
 const harTil = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
 const harPlade = p => p.type !== 'dor' && (p.plade !== undefined ? !!p.plade : !!p.pladeNote);   // døre har ingen vindueplade
 const tilTxt = p => harTil(p) ? 'Tilsætning' + (siderTxt(p) ? ': ' + siderTxt(p) : '') : '';
-const stafkTxt = p => p.stafk === 'med' ? 'Med stafkehling' : p.stafk === 'uden' ? 'Uden stafkehling' : '';
+const stafkTxt = p => p.type === 'glas' ? '' : p.stafk === 'med' ? 'Med stafkehling' : p.stafk === 'uden' ? 'Uden stafkehling' : '';
 const pladeTxt = p => harPlade(p) ? 'Vindueplade' : '';
 const farveDel = (navn, k, r, ens) => {
   if (!k && !r) return '';
@@ -1593,12 +1594,12 @@ function editPos(s, a, existing) {
       <div><label class="f">Bredde (midt på)</label><div class="mm"><input inputmode="decimal" id="eB" value="${esc(p.b)}" placeholder="0"><span>mm</span></div></div>
       <div><label class="f">Højde (midt på)</label><div class="mm"><input inputmode="decimal" id="eH" value="${esc(p.h)}" placeholder="0"><span>mm</span></div></div>
     </div>
-    <div class="two">
+    <div class="two" id="eKarmWrap">
       <div><label class="f">Karm dybde</label><div class="mm"><input inputmode="decimal" id="eKd" value="${esc(p.kd || '')}" placeholder="–"><span>mm</span></div></div>
       <div><label class="f">Karm tykkelse</label><div class="mm"><input inputmode="decimal" id="eKt" value="${esc(p.kt || '')}" placeholder="–"><span>mm</span></div></div>
     </div>
-    <label class="f">Stafkehling</label>
-    <div class="seg" id="eStafk"><button type="button" data-s="med">Med</button><button type="button" data-s="uden">Uden</button></div>
+    <div id="eStafkWrap"><label class="f">Stafkehling</label>
+    <div class="seg" id="eStafk"><button type="button" data-s="med">Med</button><button type="button" data-s="uden">Uden</button></div></div>
     <label class="f">Antal ens</label>
     <div class="stepper"><button id="eMinus" type="button">−</button><input inputmode="numeric" id="eAnt" value="${esc(p.antal)}"><button id="ePlus" type="button">+</button></div>
     <label class="check"><input type="checkbox" id="eTil" ${harTil(p) ? 'checked' : ''}> Tilsætning</label>
@@ -1706,6 +1707,7 @@ function editPos(s, a, existing) {
   const setType = t => {
     p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t));
     if (t === 'dor') { p.dHinge = p.dHinge || 'v'; p.dRetn = p.dRetn || 'ind'; p.dKind = p.dKind || 'hoved'; }
+    bg.querySelector('#eStafkWrap').classList.toggle('hidden', t === 'glas'); bg.querySelector('#eKarmWrap').classList.toggle('hidden', t === 'glas');
     updDor(); if (typeof updSym === 'function') updSym(); redraw();
   };
   segBtns.forEach(b => b.onclick = () => setType(b.dataset.t));

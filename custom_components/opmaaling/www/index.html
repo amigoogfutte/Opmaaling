@@ -131,6 +131,7 @@
 
 <script>
 "use strict";
+const APP_VERSION = '0.3.2';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -509,7 +510,7 @@ function linesEditor(p, fu) {
     bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
       <div style="text-align:center;font-weight:600;margin-bottom:2px">Tegning af vinduet</div>
       <div style="text-align:center;font-size:13.5px;color:#bbb;margin-bottom:8px">
-        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk for at vælge en eller flere. Træk for at flytte – kun stykket i det felt, du trækker i, flytter sig.</div>
+        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk for at vælge en eller flere. Træk for at flytte – kun stykket mellem de nærmeste krydsende streger flytter sig.</div>
       <div id="lWrap" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
         <div id="lBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="lCv" style="display:block"></canvas></div>
       </div>
@@ -748,6 +749,7 @@ function renderHome() {
   $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
     (list.length > 4 ? searchHTML('Søg sagsnummer, kunde eller adresse') : '') + `<div id="sagList"></div>`;
   sagListe(list, `<div class="empty">Ingen aktive sager.<br>Tryk på <b>Ny sag</b> for at starte.</div>`, 'home');
+  $('#main').insertAdjacentHTML('beforeend', `<div class="muted" style="text-align:center;font-size:12px;margin-top:24px">Version ${APP_VERSION}</div>`);
   $('#fabWrap').innerHTML = `<button class="btn fab" id="newSag">+ Ny sag</button>`;
   $('#newSag').onclick = async () => {
     const r = await formDialog('Ny sag', [['Sagsnummer', '', 'Fx 2026-114', 'numeric'], ['Kunde / beskrivelse (valgfri)', '', 'Fx Jensen']], 'Opret');

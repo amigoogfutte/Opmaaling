@@ -72,8 +72,8 @@
   .stepper button:first-child { border-radius: 10px 0 0 10px; }
   .stepper button:last-child { border-radius: 0 10px 10px 0; }
   .check { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #cfd5dd; border-radius: 10px;
-    padding: 12px 14px; margin-top: 12px; font-size: 18px; cursor: pointer; user-select: none; -webkit-user-select: none; }
-  .check input { width: 26px; height: 26px; margin: 0; accent-color: var(--blue); }
+    padding: 9px 12px; margin-top: 8px; font-size: 15px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .check input { width: 22px; height: 22px; margin: 0; accent-color: var(--blue); }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
   .tag.raa { background: #ece8fb; color: #4c3a99; }
   .check.small { font-size: 15px; padding: 9px 12px; margin-top: 8px; }
@@ -131,7 +131,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.3.9';
+const APP_VERSION = '0.4.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -331,11 +331,24 @@ function normLines(L) {
     : { p: +x.p, t: x.t === 'sprosse' ? 'sprosse' : 'post', a: x.a !== undefined ? +x.a : 0, b: x.b !== undefined ? +x.b : 1,
         ...(x.mm ? { mm: +x.mm, fra: x.fra === 'slut' ? 'slut' : 'start' } : {}) });
   const fast = (L && Array.isArray(L.fast) ? L.fast : []).filter(q => Array.isArray(q) && q.length === 2).map(([a, b]) => [+a, +b]);
-  return { v: f(L && L.v), h: f(L && L.h), fast };
+  const open = (L && Array.isArray(L.open) ? L.open : []).filter(o => o && Array.isArray(o.pt))
+    .map(o => ({ pt: [+o.pt[0], +o.pt[1]], type: o.type, hinge: o.hinge === 'h' ? 'h' : 'v', brems: !!o.brems, d180: !!o.d180 }));
+  return { v: f(L && L.v), h: f(L && L.h), fast, open };
 }
 // Faste felter (uden ramme) gemmes som et punkt inde i feltet
 const inFr = (fr, [fx, fy]) => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <= fr[3];
 const isFast = (L, fr) => (L.fast || []).some(q => inFr(fr, q));
+// Åbningsmåde pr. ramme: sidehængt (hængsel v/h, bremse, 180°), tophængt, vendevindue
+const openAt = (L, fr) => (L.open || []).find(o => inFr(fr, o.pt));
+const AABNING = { side: 'Sidehængt', top: 'Tophængt', vende: 'Vendevindue' };
+const openTxt = o => !o ? '' : o.type === 'side'
+  ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''}${o.d180 ? ', 180°' : ''})` : (AABNING[o.type] || '');
+const aabningLines = p => {
+  if (p.type === 'glas') return [];
+  const L = normLines(p.lines), frs = fracFields(L);
+  if (!(L.open || []).length) return [];
+  return frs.map((fr, i) => { const o = openAt(L, fr); return o && !isFast(L, fr) ? (frs.length > 1 ? `Ramme ${i + 1}: ` : 'Åbning: ') + openTxt(o) : ''; }).filter(Boolean);
+};
 const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
 const fastTxt = p => { const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
 const isPartial = l => l.a > 0.001 || l.b < 0.999;
@@ -345,7 +358,9 @@ const r3 = v => Math.round(v * 1000) / 1000;
 const packLines = L => {
   const pk = arr => arr.slice().sort((x, y) => x.p - y.p || x.a - y.a).map(l => ({
     p: r3(l.p), t: l.t, ...(isPartial(l) ? { a: r3(l.a), b: r3(l.b) } : {}), ...(l.mm ? { mm: l.mm, fra: l.fra || 'start' } : {}) }));
-  const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]); return out;
+  const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]);
+  if (L.open && L.open.length) out.open = L.open.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], type: o.type, hinge: o.hinge, brems: o.brems || undefined, d180: o.d180 || undefined }));
+  return out;
 };
 
 // Symmetri vælges hver for sig for poster og sprosser (ældre data: ét fælles valg)
@@ -464,13 +479,15 @@ function plainDrawing(p, maxSide) {
     const edges = (k) => [0, ...L[k].filter(l => l.t === 'post').map(l => l.p).sort((a, b) => a - b), 1];
     const ev = edges('v'), eh = edges('h'), xs = cuts(nv, w), ys = cuts(nh, h);
     xs.forEach(([x0, x1], i) => ys.forEach(([y0, y1], j) => fields.push({ fr: [ev[i], ev[i + 1], eh[j], eh[j + 1]], px: [x0, x1, y0, y1] })));
+    fields.sort((a2, b2) => a2.fr[2] - b2.fr[2] || a2.fr[0] - b2.fr[0]);   // samme nummerering som i teksten: række for række
   } else {
     for (const fr of fracFields(L)) fields.push({ fr, px: [
       fr[0] < 0.001 ? f : fr[0] * w + tp / 2, fr[1] > 0.999 ? w - f : fr[1] * w - tp / 2,
       fr[2] < 0.001 ? f : fr[2] * h + tp / 2, fr[3] > 0.999 ? h - f : fr[3] * h - tp / 2] });
   }
 
-  for (const { fr, px: [x0, x1, y0, y1] } of fields) {
+  const visNr = !glas && (L.open || []).length > 0 && fields.length > 1;
+  for (const [fi, { fr, px: [x0, x1, y0, y1] }] of fields.entries()) {
     if (x1 - x0 < 4 || y1 - y0 < 4) continue;
     const fast = !glas && isFast(L, fr);
     const rx0 = x0 + gap, ry0 = y0 + gap, rx1 = x1 - gap, ry1 = y1 - gap;
@@ -504,6 +521,27 @@ function plainDrawing(p, maxSide) {
         x.fillRect(s.c - ts / 2, a, ts, b - a); x.strokeRect(s.c - ts / 2, a, ts, b - a); }
       else { if (s.c <= gy0 + ts || s.c >= gy1 - ts) continue; const a = Math.max(gx0, s.s), b = Math.min(gx1, s.e); if (b - a < 3) continue;
         x.fillRect(a, s.c - ts / 2, b - a, ts); x.strokeRect(a, s.c - ts / 2, b - a, ts); }
+    }
+    // åbningssymbol: stiplede linjer med spidsen mod hængslerne
+    const o = !glas && !fast ? openAt(L, fr) : null;
+    if (o || visNr) {
+      x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.1; x.setLineDash([lw * 4, lw * 3]);
+      const mx = (rx0 + rx1) / 2, my = (ry0 + ry1) / 2;
+      const ln = (a, b2, c2, d) => { x.beginPath(); x.moveTo(a, b2); x.lineTo(c2, d); x.stroke(); };
+      if (o && o.type === 'side') { const hx = o.hinge === 'h' ? rx1 : rx0, ox = o.hinge === 'h' ? rx0 : rx1; ln(ox, ry0, hx, my); ln(ox, ry1, hx, my); }
+      if (o && o.type === 'top') { ln(rx0, ry1, mx, ry0); ln(rx1, ry1, mx, ry0); }
+      if (o && o.type === 'vende') { x.setLineDash([lw * 6, lw * 2, lw, lw * 2]); ln(rx0 - gap, my, rx1 + gap, my); x.setLineDash([]);
+        x.beginPath(); x.arc(mx, my, Math.min(rx1 - rx0, ry1 - ry0) * 0.12, Math.PI * 0.2, Math.PI * 1.6); x.stroke(); }
+      x.setLineDash([]);
+      const fz = Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.11);
+      x.font = `700 ${fz}px -apple-system, Helvetica, Arial, sans-serif`; x.textBaseline = 'top';
+      if (o && o.type === 'side' && (o.brems || o.d180)) {
+        x.fillStyle = '#c0392b'; x.textAlign = o.hinge === 'h' ? 'right' : 'left';
+        x.fillText([o.d180 ? '180°' : '', o.brems ? 'bremse' : ''].filter(Boolean).join(' · '), o.hinge === 'h' ? gx1 - 3 : gx0 + 3, gy0 + 3);
+      }
+      if (visNr) { x.fillStyle = '#1f5fa8'; x.textAlign = o && o.type === 'side' && o.hinge === 'h' ? 'left' : 'right';
+        x.fillText(String(fi + 1), o && o.type === 'side' && o.hinge === 'h' ? gx0 + 3 : gx1 - 3, gy0 + 3); }
+      x.restore();
     }
   }
   x.lineWidth = lw * 1.4; x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
@@ -563,11 +601,11 @@ function linesEditor(p, fu) {
     resym();
     let img = null; if (fu) { try { img = await photoImg(fu); } catch (e) { img = null; } }
     const bg = document.createElement('div'); bg.className = 'dialog-bg'; bg.style.alignItems = 'stretch'; bg.style.padding = '0';
-    bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
+    bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
       <div style="text-align:center;font-weight:600;margin-bottom:2px">Tegning af vinduet</div>
       <div style="text-align:center;font-size:13.5px;color:#bbb;margin-bottom:8px">
-        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk på en streg for at vælge den – eller på et felt for at give det sprosser eller gøre det fast. Træk for at flytte.</div>
-      <div id="lWrap" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
+        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk på en streg for at vælge den – eller på et felt for at vælge åbning eller give det sprosser. Træk for at flytte.</div>
+      <div id="lWrap" style="flex:none;height:min(52vh, 460px);display:flex;align-items:center;justify-content:center">
         <div id="lBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="lCv" style="display:block"></canvas></div>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -582,7 +620,18 @@ function linesEditor(p, fu) {
         <button class="btn sec small" id="lSpejl" style="width:auto;flex:none;padding:9px 12px">⇄ Spejlvend</button>
       </div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lType">Skift til sprosse</button><button class="btn danger small" id="lDel">Fjern valgt</button></div>
-      <div class="btns" style="margin-top:0"><button class="btn sec small" id="lFast">Gør fast</button></div>
+      <div id="lOpenRow" class="hidden" style="margin:2px 0 6px">
+        <div style="font-size:12px;color:#bbb;margin-bottom:4px">Åbning for valgte ramme(r)</div>
+        <div class="chips" id="lOpen" style="margin:0 0 6px">
+          <button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
+          <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="vende">Vendevindue</button>
+          <button type="button" class="chip" data-o="ingen">Ingen</button></div>
+        <div id="lSideOpts" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div class="seg" id="lHinge" style="flex:1 1 220px"><button type="button" data-h="v">Hængsel venstre</button><button type="button" data-h="h">Hængsel højre</button></div>
+          <label class="check small" style="margin:0;color:#111"><input type="checkbox" id="lBrems"> Bremse</label>
+          <label class="check small" style="margin:0;color:#111"><input type="checkbox" id="lD180"> 180°</label>
+        </div>
+      </div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Fjern alle</button></div>
       <div class="btns" style="margin-top:0"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
     </div>`;
@@ -606,13 +655,16 @@ function linesEditor(p, fu) {
     // valgte rammer gemmes som punkter (brøkdele), så valget overlever, når felterne regnes om
     let selF = [];
     const fieldAt = (fx, fy) => fracFields(L).find(fr => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <= fr[3]);
-    const selFields = () => { const out = []; for (const [fx, fy] of selF) { const fr = fieldAt(fx, fy); if (fr && !out.includes(fr)) out.push(fr); } return out; };
+    const sameFr = (a, b) => !!a && !!b && a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
+    const selFields = () => { const out = []; for (const [fx, fy] of selF) { const fr = fieldAt(fx, fy); if (fr && !out.some(o => sameFr(o, fr))) out.push(fr); } return out; };
     function draw() {
       box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
-      for (const fr of fracFields(L).filter(fr2 => isFast(L, fr2))) {
+      for (const fr of fracFields(L)) {
+        const o = openAt(L, fr), fast = isFast(L, fr); if (!fast && !o) continue;
+        const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT ${o.hinge === 'h' ? '▶' : '◀'}${o.brems ? ' · BREMSE' : ''}${o.d180 ? ' · 180°' : ''}` : o.type === 'top' ? 'TOPHÆNGT ▲' : 'VENDEVINDUE';
         const el = document.createElement('div'); el.className = 'fsel';
         el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none`;
-        el.innerHTML = '<span style="background:#ffcc00;color:#111;font-weight:700;font-size:12px;padding:2px 6px;border-radius:6px;margin-bottom:8px">FAST</span>';
+        el.innerHTML = `<span style="background:#ffcc00;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-bottom:8px;text-align:center">${txt}</span>`;
         box.appendChild(el);
       }
       for (const fr of selFields()) {
@@ -648,8 +700,18 @@ function linesEditor(p, fu) {
       bg.querySelector('#lDel').disabled = !n && !nf; bg.querySelector('#lType').disabled = !n;
       bg.querySelector('#lDel').textContent = n ? (n > 1 ? `Fjern valgte (${n})` : 'Fjern valgt') : nf ? `Fjern sprosser i ramme${nf > 1 ? 'r' : ''}` : 'Fjern valgt';
       const frs = selFields(), alleFast = frs.length && frs.every(fr => isFast(L, fr));
-      bg.querySelector('#lFast').disabled = !nf;
-      bg.querySelector('#lFast').textContent = !nf ? 'Gør fast (vælg en ramme først)' : alleFast ? `Gør oplukkelig (med ramme)` : `Gør fast (uden ramme)`;
+      bg.querySelector('#lOpenRow').classList.toggle('hidden', !nf);
+      if (nf) {
+        const typer = frs.map(fr => isFast(L, fr) ? 'fast' : (openAt(L, fr) || {}).type || 'ingen');
+        const fælles = typer.every(t2 => t2 === typer[0]) ? typer[0] : null;
+        bg.querySelectorAll('#lOpen .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.o === fælles));
+        const sider = frs.map(fr => openAt(L, fr)).filter(o => o && o.type === 'side' && !isFast(L, frs.find(f2 => inFr(f2, o.pt))));
+        bg.querySelector('#lSideOpts').classList.toggle('hidden', !sider.length);
+        if (sider.length) {
+          bg.querySelectorAll('#lHinge button').forEach(b2 => b2.classList.toggle('on', sider.every(o => o.hinge === b2.dataset.h)));
+          bg.querySelector('#lBrems').checked = sider.every(o => o.brems); bg.querySelector('#lD180').checked = sider.every(o => o.d180);
+        }
+      }
       bg.querySelector('#lAddVS').textContent = nf ? `+ Lodret sprosse i ramme${nf > 1 ? 'r' : ''}` : '+ Lodret sprosse';
       bg.querySelector('#lAddHS').textContent = nf ? `+ Vandret sprosse i ramme${nf > 1 ? 'r' : ''}` : '+ Vandret sprosse';
       bg.querySelector('#lType').textContent = (alleSpr ? 'Skift til post' : 'Skift til sprosse') + (n > 1 ? ` (${n})` : '');
@@ -661,7 +723,7 @@ function linesEditor(p, fu) {
       if (!el) {
         const r = box.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
         const fr = fieldAt(fx, fy); sel.clear();
-        if (fr) { const i = selF.findIndex(([x2, y2]) => fieldAt(x2, y2) === fr); if (i >= 0) selF.splice(i, 1); else selF.push([fx, fy]); }
+        if (fr) { const before = selF.length; selF = selF.filter(([x2, y2]) => !sameFr(fieldAt(x2, y2), fr)); if (selF.length === before) selF.push([fx, fy]); }
         draw(); return;
       }
       selF = [];
@@ -763,15 +825,24 @@ function linesEditor(p, fu) {
       if (one.t === 'sprosse' && ss) { ss = false; toast('Sprosser: asymmetrisk'); }
       if (one.t === 'post' && ss) symSpr(L); bg.querySelector('#lMaal').dataset.for = ''; draw();
     };
-    bg.querySelector('#lFast').onclick = () => {
-      const frs = selFields(); if (!frs.length) return;
-      const alleFast = frs.every(fr => isFast(L, fr));
-      L.fast = (L.fast || []).filter(q => !frs.some(fr => inFr(fr, q)));
-      if (!alleFast) for (const fr of frs) L.fast.push([r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)]);
-      selF = []; draw();
-    };
-    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [] }; sel.clear(); selF = []; draw(); };
-    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast; L = normLines(detectLines(img, p.crop)); L.fast = fast; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
+    // åbningsmåde for de valgte rammer
+    bg.querySelectorAll('#lOpen .chip').forEach(c2 => c2.onclick = () => {
+      const frs = selFields(); if (!frs.length) return; const t2 = c2.dataset.o;
+      L.open = L.open || []; L.fast = L.fast || [];
+      for (const fr of frs) {
+        const old = openAt(L, fr), pt = [r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)];
+        L.fast = L.fast.filter(q => !inFr(fr, q)); L.open = L.open.filter(o => !inFr(fr, o.pt));
+        if (t2 === 'fast') L.fast.push(pt);
+        else if (t2 !== 'ingen') L.open.push({ pt, type: t2, hinge: old && old.hinge || 'v', brems: t2 === 'side' && !!(old && old.brems), d180: t2 === 'side' && !!(old && old.d180) });
+      }
+      draw();
+    });
+    const sideSet = fn => { for (const fr of selFields()) { const o = openAt(L, fr); if (o && o.type === 'side') fn(o); } draw(); };
+    bg.querySelectorAll('#lHinge button').forEach(b2 => b2.onclick = () => sideSet(o => { o.hinge = b2.dataset.h; }));
+    bg.querySelector('#lBrems').onchange = e => sideSet(o => { o.brems = e.target.checked; });
+    bg.querySelector('#lD180').onchange = e => sideSet(o => { o.d180 = e.target.checked; });
+    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [] }; sel.clear(); selF = []; draw(); };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open; L = normLines(detectLines(img, p.crop)); L.fast = fast; L.open = open; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);
     const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
     bg.querySelector('#lNo').onclick = () => done(null);
@@ -877,7 +948,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 2].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1164,6 +1235,10 @@ function editPos(s, a, existing) {
     <div class="seg" id="eStafk"><button type="button" data-s="med">Med</button><button type="button" data-s="uden">Uden</button></div>
     <label class="f">Antal ens</label>
     <div class="stepper"><button id="eMinus" type="button">−</button><input inputmode="numeric" id="eAnt" value="${esc(p.antal)}"><button id="ePlus" type="button">+</button></div>
+    <label class="check"><input type="checkbox" id="eTil" ${harTil(p) ? 'checked' : ''}> Tilsætning</label>
+    <div id="eTilWrap" class="${harTil(p) ? '' : 'hidden'}"><label class="f">Hvor?</label>
+    <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div></div>
+    <label class="check"><input type="checkbox" id="ePlade" ${harPlade(p) ? 'checked' : ''}> Vindueplade</label>
     <label class="check"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
     <label class="check"><input type="checkbox" id="eRaa" ${p.raa ? 'checked' : ''}> Råglas</label>
     <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}">
@@ -1171,22 +1246,6 @@ function editPos(s, a, existing) {
       <div class="raagrid hidden" id="eRaaGrid">${raaTiles(p.raaType)}</div>
       <div id="eRaaOther" class="${p.raaType && !RAAGLAS.includes(p.raaType) ? '' : 'hidden'}"><label class="f">Anden type</label>
       <input type="text" id="eRaaType" value="${esc(p.raaType && !RAAGLAS.includes(p.raaType) ? p.raaType : '')}" placeholder="Skriv typen"></div></div>
-    <label class="f">Billede</label>
-    <div class="photo-btns">
-      <label class="btn sec small" for="fileCam">📷 Tag billede</label>
-      <label class="btn sec small" for="fileLib">🖼 Vælg billede</label>
-    </div>
-    <div id="eSkWrap" style="margin-top:10px">
-      <canvas class="sketch" id="eSketch"></canvas>
-      <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
-      <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Tegn poster og sprosser</button>
-      <div class="btns hidden" id="ePhotoBtns">
-        <button class="btn sec small" id="eCrop">Markér vinduet</button>
-        <button class="btn sec small" id="eToggle">Vis foto</button>
-        <button class="btn danger small" id="eRmPhoto">Fjern billede</button>
-      </div>
-      <img id="ePhoto" class="sketch hidden" alt="">
-    </div>
     <label class="f">Farve udvendig</label>
     <div class="two">
       <div><label class="f" id="eFuKLbl" style="margin-top:0">${p.fuEns !== false ? 'Karm og ramme' : 'Karm'}</label>
@@ -1204,10 +1263,22 @@ function editPos(s, a, existing) {
     </div>
     <label class="check small"><input type="checkbox" id="eFiEns" ${p.fiEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
     <datalist id="farveList">${[...new Set([...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))].map(f => `<option value="${esc(f)}">`).join('')}</datalist>
-    <label class="check"><input type="checkbox" id="eTil" ${harTil(p) ? 'checked' : ''}> Tilsætning</label>
-    <div id="eTilWrap" class="${harTil(p) ? '' : 'hidden'}"><label class="f">Hvor?</label>
-    <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div></div>
-    <label class="check"><input type="checkbox" id="ePlade" ${harPlade(p) ? 'checked' : ''}> Vindueplade</label>
+    <label class="f">Billede</label>
+    <div class="photo-btns">
+      <label class="btn sec small" for="fileCam">📷 Tag billede</label>
+      <label class="btn sec small" for="fileLib">🖼 Vælg billede</label>
+    </div>
+    <div id="eSkWrap" style="margin-top:10px">
+      <canvas class="sketch" id="eSketch"></canvas>
+      <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
+      <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Tegn poster og sprosser</button>
+      <div class="btns hidden" id="ePhotoBtns">
+        <button class="btn sec small" id="eCrop">Markér vinduet</button>
+        <button class="btn sec small" id="eToggle">Vis foto</button>
+        <button class="btn danger small" id="eRmPhoto">Fjern billede</button>
+      </div>
+      <img id="ePhoto" class="sketch hidden" alt="">
+    </div>
     <label class="f">Note</label>
     <textarea id="eNote" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
     <div class="btns" style="margin-top:14px"><button class="btn sec" id="eShareSk">Del skitse</button></div>
@@ -1454,7 +1525,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${t.v} vinduer og ${t.g} glas på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -1496,7 +1567,7 @@ function posLines(p) {
   return [
     `${p.type === 'glas' ? 'Glas' : 'Vindue'} · ${p.antal || 1} stk`,
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
-    karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p),
+    karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p),
     p.ventil ? 'Med ventil' : '',
     p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
     tilTxt(p), pladeTxt(p), ...farveTxt(p),

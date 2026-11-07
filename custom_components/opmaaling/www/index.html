@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.3';
+const APP_VERSION = '0.4.4';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -646,7 +646,7 @@ function linesEditor(p, fu) {
     bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
       <div style="text-align:center;font-weight:600;margin-bottom:2px">Tegning af vinduet</div>
       <div style="text-align:center;font-size:13.5px;color:#bbb;margin-bottom:8px">
-        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk på en streg for at vælge den – eller på et felt for at vælge åbning eller give det sprosser. Træk for at flytte.</div>
+        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk på en streg eller et felt for at vælge det. Shift (eller hold fingeren nede) = vælg flere. Træk for at flytte.</div>
       <div id="lWrap" style="flex:none;height:min(52vh, 460px);display:flex;align-items:center;justify-content:center">
         <div id="lBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="lCv" style="display:block"></canvas></div>
       </div>
@@ -759,18 +759,20 @@ function linesEditor(p, fu) {
     }
     // Tryk på en streg = vælg/fravælg (flere kan vælges). Træk i en streg = flyt den.
     let drag = null;
+    // Et klik vælger kun det, man klikker på. Shift (eller hold fingeren nede ½ sekund) = vælg flere.
+    let tryk = null;
     box.addEventListener('pointerdown', e => {
       const el = e.target.closest('.ln');
+      tryk = { t: Date.now(), shift: e.shiftKey };
       if (!el) {
-        const r = box.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
-        const fr = fieldAt(fx, fy); sel.clear();
-        if (fr) { const before = selF.length; selF = selF.filter(([x2, y2]) => !sameFr(fieldAt(x2, y2), fr)); if (selF.length === before) selF.push([fx, fy]); }
-        draw(); return;
+        const r = box.getBoundingClientRect();
+        tryk.felt = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+        box.setPointerCapture(e.pointerId); e.preventDefault(); return;
       }
-      selF = [];
       drag = { k: el.dataset.k, l: L[el.dataset.k][+el.dataset.i], x: e.clientX, y: e.clientY, moved: false };
       box.setPointerCapture(e.pointerId); e.preventDefault();
     });
+    const flere = () => tryk && (tryk.shift || Date.now() - tryk.t > 450);
     // Når man trækker i en streg, der krydser poster, deles den, så kun stykket i det felt, man trækker i, flytter sig.
     // Streger, der ender på det stykke, følger med.
     function startDrag(e) {
@@ -801,8 +803,21 @@ function linesEditor(p, fu) {
       draw();
     });
     const end = () => {
-      if (drag && !drag.moved) { sel.has(drag.l) ? sel.delete(drag.l) : sel.add(drag.l); draw(); }
-      drag = null;
+      if (tryk && tryk.felt) {
+        const [fx, fy] = tryk.felt, fr = fieldAt(fx, fy); sel.clear();
+        if (fr) {
+          const valgt = selF.some(([x2, y2]) => sameFr(fieldAt(x2, y2), fr));
+          if (flere()) { if (valgt) selF = selF.filter(([x2, y2]) => !sameFr(fieldAt(x2, y2), fr)); else selF.push([fx, fy]); }
+          else selF = valgt && selFields().length === 1 ? [] : [[fx, fy]];
+        }
+        draw();
+      } else if (drag && !drag.moved) {
+        selF = [];
+        if (flere()) { sel.has(drag.l) ? sel.delete(drag.l) : sel.add(drag.l); }
+        else { const kun = sel.size === 1 && sel.has(drag.l); sel.clear(); if (!kun) sel.add(drag.l); }
+        draw();
+      }
+      drag = null; tryk = null;
     };
     box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
     const addLine = (k, t) => {

@@ -358,7 +358,8 @@ function plainDrawing(p, maxSide) {
   const x = c.getContext('2d');
   const m = Math.min(w, h), lw = Math.max(1.5, maxSide / 200);
   const glas = p.type === 'glas';
-  const L = shownLines(p);
+  const sym = isSym(p);
+  const L = normLines(p.lines);
   if (glas) { L.v.forEach(l => l.t = 'sprosse'); L.h.forEach(l => l.t = 'sprosse'); }
   const f = glas ? 0 : Math.max(6, m * 0.055);      // karm
   const tp = Math.max(6, m * 0.05);                   // post
@@ -368,13 +369,23 @@ function plainDrawing(p, maxSide) {
   const KARM = '#dfe5ee', RAMME = '#f7f8fa', GLAS = p.raa ? '#e9ecf1' : '#eef6ff', LINE = '#2a3b55';
   x.fillStyle = glas ? '#fff' : KARM; x.fillRect(0, 0, w, h);
   x.lineWidth = lw; x.strokeStyle = LINE;
-  const cuts = (posts, len) => {
+  // Symmetrisk: lige store felter mellem karm og poster, og lige store glasfelter mellem sprosser
+  const even = (a, b, n, bar) => { const cell = (b - a - n * bar) / (n + 1); return Array.from({ length: n }, (_, i) => a + (i + 1) * cell + i * bar + bar / 2); };
+  const postPx = (k, len) => {
+    const ps = L[k].filter(l => l.t === 'post');
+    return sym ? even(f, len - f, ps.length, tp) : ps.map(l => l.p * len).sort((a, b) => a - b);
+  };
+  const cuts = (centers, len) => {
     const out = [[f, null]];
-    for (const pos of posts.map(l => l.p).sort((a, b) => a - b)) { const mm = pos * len; out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); }
+    for (const mm of centers) { out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); }
     out[out.length - 1][1] = len - f; return out.filter(([a, b]) => b - a > 4);
   };
-  const xs = cuts(L.v.filter(l => l.t === 'post'), w), ys = cuts(L.h.filter(l => l.t === 'post'), h);
-  const sv = L.v.filter(l => l.t === 'sprosse').map(l => l.p * w), sh = L.h.filter(l => l.t === 'sprosse').map(l => l.p * h);
+  const xs = cuts(postPx('v', w), w), ys = cuts(postPx('h', h), h);
+  const nsV = L.v.filter(l => l.t === 'sprosse').length, nsH = L.h.filter(l => l.t === 'sprosse').length;
+  // sprosser: i symmetrisk tilstand fordeles de i hvert glas (eller over hele vinduet, hvis antallet ikke går op)
+  const perV = sym && nsV % xs.length === 0 ? nsV / xs.length : null, perH = sym && nsH % ys.length === 0 ? nsH / ys.length : null;
+  const sv = perV !== null ? null : sym ? even(f, w - f, nsV, ts) : L.v.filter(l => l.t === 'sprosse').map(l => l.p * w);
+  const sh = perH !== null ? null : sym ? even(f, h - f, nsH, ts) : L.h.filter(l => l.t === 'sprosse').map(l => l.p * h);
   for (const [x0, x1] of xs) for (const [y0, y1] of ys) {
     // ramme
     const rx0 = x0 + gap, ry0 = y0 + gap, rx1 = x1 - gap, ry1 = y1 - gap;
@@ -389,8 +400,8 @@ function plainDrawing(p, maxSide) {
     x.moveTo(gx0 + gw * .14, gy0 + gh * .32); x.lineTo(gx0 + gw * .36, gy0 + gh * .1); x.stroke(); x.restore();
     // sprosser inden for dette glas
     x.fillStyle = RAMME;
-    for (const sx of sv) if (sx > gx0 + ts && sx < gx1 - ts) { x.fillRect(sx - ts / 2, gy0, ts, gy1 - gy0); x.strokeRect(sx - ts / 2, gy0, ts, gy1 - gy0); }
-    for (const sy of sh) if (sy > gy0 + ts && sy < gy1 - ts) { x.fillRect(gx0, sy - ts / 2, gx1 - gx0, ts); x.strokeRect(gx0, sy - ts / 2, gx1 - gx0, ts); }
+    for (const sx of (sv || even(gx0, gx1, perV, ts))) if (sx > gx0 + ts && sx < gx1 - ts) { x.fillRect(sx - ts / 2, gy0, ts, gy1 - gy0); x.strokeRect(sx - ts / 2, gy0, ts, gy1 - gy0); }
+    for (const sy of (sh || even(gy0, gy1, perH, ts))) if (sy > gy0 + ts && sy < gy1 - ts) { x.fillRect(gx0, sy - ts / 2, gx1 - gx0, ts); x.strokeRect(gx0, sy - ts / 2, gx1 - gx0, ts); }
   }
   x.lineWidth = lw * 1.4; x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
   return c;

@@ -568,7 +568,7 @@ function linesEditor(p, fu) {
     function startDrag(e) {
       const r = box.getBoundingClientRect(), l = drag.l, k = drag.k, k2 = k === 'v' ? 'h' : 'v';
       const u = k === 'v' ? (drag.y - r.top) / r.height : (drag.x - r.left) / r.width;
-      const crossers = L[k2].filter(q => q.t === 'post' && q.a <= l.p + 0.002 && q.b >= l.p - 0.002 && q.p > l.a + 0.005 && q.p < l.b - 0.005).map(q => q.p);
+      const crossers = L[k2].filter(q => (l.t === 'sprosse' || q.t === 'post') && q.a <= l.p + 0.002 && q.b >= l.p - 0.002 && q.p > l.a + 0.005 && q.p < l.b - 0.005).map(q => q.p);
       const lo = Math.max(l.a, ...crossers.filter(c => c < u)), hi = Math.min(l.b, ...crossers.filter(c => c > u));
       if (lo > l.a + 0.001) L[k].push({ p: l.p, t: l.t, a: l.a, b: lo });
       if (hi < l.b - 0.001) L[k].push({ p: l.p, t: l.t, a: hi, b: l.b });

@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.9';
+const APP_VERSION = '0.6.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -257,7 +257,8 @@ function foldPlan(p) {
   if (p.dFoldDel === 'midt' && n % 2 === 0) {
     // delt på midten: hver halvdel skal have et ulige antal fløje, så sidste fløj slutter frit i midten
     const half = n / 2, venstre = half % 2 === 1 ? half : (side === 'v' ? half + 1 : half - 1);
-    return { n, grupper: [{ fra: 0, til: venstre, mod: 'v' }, { fra: venstre, til: n, mod: 'h' }], dor: null }; }
+    const gaa = p.dFoldGaa === 'h' ? venstre : venstre - 1;
+    return { n, grupper: [{ fra: 0, til: venstre, mod: 'v' }, { fra: venstre, til: n, mod: 'h' }], dor: null, midt: { gaa, staa: gaa === venstre ? venstre - 1 : venstre } }; }
   if (n % 2 === 0) {   // lige antal: en dør i den ene side, resten foldes mod den anden
     return side === 'v' ? { n, grupper: [{ fra: 0, til: n - 1, mod: 'v' }], dor: { i: n - 1, hinge: 'h' } }
                         : { n, grupper: [{ fra: 1, til: n, mod: 'h' }], dor: { i: 0, hinge: 'v' } };
@@ -266,7 +267,7 @@ function foldPlan(p) {
 }
 const foldTxt = p => {
   const f = foldPlan(p), sideNavn = s2 => s2 === 'h' ? 'højre' : 'venstre';
-  if (p.dFoldDel === 'midt' && f.grupper.length === 2) { const fl = k2 => `${k2} ${k2 === 1 ? 'fløj' : 'fløje'}`; return `delt på midten (${fl(f.grupper[0].til - f.grupper[0].fra)} mod venstre, ${fl(f.grupper[1].til - f.grupper[1].fra)} mod højre)`; }
+  if (p.dFoldDel === 'midt' && f.grupper.length === 2) { const fl = k2 => `${k2} ${k2 === 1 ? 'fløj' : 'fløje'}`; return `delt på midten (${fl(f.grupper[0].til - f.grupper[0].fra)} mod venstre, ${fl(f.grupper[1].til - f.grupper[1].fra)} mod højre), gående fløj ${p.dFoldGaa === 'h' ? 'til højre' : 'til venstre'} for midten`; }
   const g = f.grupper[0], antal = g.til - g.fra;
   return f.dor ? `1 dør i ${sideNavn(f.dor.hinge)} side, ${antal} fløje foldes mod ${sideNavn(g.mod)}` : `alle fløje foldes mod ${sideNavn(g.mod)}`;
 };
@@ -596,6 +597,19 @@ function plainDrawing(p, maxSide) {
         const cx = ix0 + (g.fra + g.til) / 2 * pw, cy = iy0 + (iy1 - iy0) * 0.12, L2 = Math.min(pw * 0.6, iw * 0.08), dir = g.mod === 'h' ? 1 : -1, a2 = Math.max(5, L2 * 0.35);
         x.beginPath(); x.moveTo(cx - dir * L2, cy); x.lineTo(cx + dir * L2, cy); x.stroke();
         x.beginPath(); x.moveTo(cx + dir * L2, cy); x.lineTo(cx + dir * (L2 - a2), cy - a2 * 0.6); x.lineTo(cx + dir * (L2 - a2), cy + a2 * 0.6); x.closePath(); x.fill();
+      }
+      // delt på midten: gående og stående fløj i midten (gående får et greb ved midten)
+      if (plan.midt) {
+        const fsz = Math.max(8, Math.min(pw / 5.2, (iy1 - iy0) * 0.05)), my = iy0 + (iy1 - iy0) * 0.25;
+        x.font = `800 ${fsz}px -apple-system, Helvetica, Arial, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+        for (const [i, t] of [[plan.midt.gaa, 'GÅENDE'], [plan.midt.staa, 'STÅENDE']]) {
+          const cx = ix0 + (i + 0.5) * pw, tw = x.measureText(t).width + fsz * 0.6;
+          x.fillStyle = 'rgba(255,255,255,.92)'; x.fillRect(cx - tw / 2, my - fsz * 0.75, tw, fsz * 1.5);
+          x.fillStyle = i === plan.midt.gaa ? '#1f5fa8' : '#6b7280'; x.fillText(t, cx, my);
+        }
+        const mx = ix0 + plan.midt.gaa * pw + (plan.midt.gaa > plan.midt.staa ? rw * 1.6 : pw - rw * 1.6), hy = (iy0 + iy1) / 2, hl = (iy1 - iy0) * 0.07;
+        x.save(); x.strokeStyle = '#1b1f24'; x.lineWidth = Math.max(3, lw * 2.2); x.setLineDash([]); x.lineCap = 'round';
+        x.beginPath(); x.moveTo(mx, hy - hl); x.lineTo(mx, hy + hl); x.stroke(); x.restore();
       }
       x.fillStyle = '#c0392b'; x.font = `700 ${Math.max(9, Math.min(iw, iy1 - iy0) * 0.045)}px -apple-system, Helvetica, Arial, sans-serif`;
       x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText(`${n}-FLØJET · ${p.dRetn === 'ud' ? 'UDAD' : 'INDAD'}`, (ix0 + ix1) / 2, iy1 - 3);
@@ -1151,6 +1165,13 @@ function tegnFoldePlan(x, p, L, R, top, fs) {
     x.fillStyle = '#c0392b'; px = x0; py = yLin;
     for (let j = 0; j <= antal; j++) { if (j < antal || antal % 2 === 0) { x.beginPath(); x.arc(px, py, Math.max(3.5, fs * 0.2), 0, 2 * Math.PI); x.fill(); } px += dir * dx; py = j % 2 === 0 ? yLin + s * dy : yLin; }
   }
+  if (plan.midt) {
+    // de frie ender i midten: G = gående, S = stående
+    const ends = plan.grupper.map(g => { const antal = g.til - g.fra, dir = g.mod === 'h' ? -1 : 1, x0 = g.mod === 'h' ? L + g.til * pw : L + g.fra * pw;
+      return { x: x0 + dir * antal * dx, y: antal % 2 === 1 ? yLin + s * dy : yLin, gaa: g.mod === 'v' ? plan.midt.gaa < plan.grupper[1].fra : plan.midt.gaa >= plan.grupper[1].fra }; });
+    x.font = `800 ${Math.round(fs * 0.62)}px -apple-system, Helvetica, Arial, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (const e of ends) { x.fillStyle = e.gaa ? '#1f5fa8' : '#6b7280'; x.fillText(e.gaa ? 'G' : 'S', e.x, e.y + s * fs * 0.55); }
+  }
   // almindelig dør i den ene side: hængslet ved karmen, slået lidt op, med stiplet bue
   if (plan.dor) {
     const hx = plan.dor.hinge === 'h' ? R : L, dir = plan.dor.hinge === 'h' ? -1 : 1, da = 38 * Math.PI / 180;
@@ -1164,7 +1185,7 @@ function tegnFoldePlan(x, p, L, R, top, fs) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0, p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0, p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1445,6 +1466,7 @@ function editPos(s, a, existing) {
         <div class="seg" id="eDFloj" style="flex:1">${[3, 4, 5, 6, 7, 8].map(n => `<button type="button" data-v="${n}">${n}</button>`).join('')}</div></div>
       <div id="eDFoldWrap">
         <div class="seg" id="eDFoldDel" style="margin-top:8px"><button type="button" data-v="en">Alle til én side</button><button type="button" data-v="midt">Delt på midten</button></div>
+        <div class="seg" id="eDFoldGaa" style="margin-top:8px"><button type="button" data-v="v">Gående til venstre</button><button type="button" data-v="h">Gående til højre</button></div>
         <div class="seg" id="eDFoldSide" style="margin-top:8px"><button type="button" data-v="v">Foldes mod venstre</button><button type="button" data-v="h">Foldes mod højre</button></div>
       </div>
       <div id="eDRetnWrap"><div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div></div>
@@ -1536,6 +1558,8 @@ function editPos(s, a, existing) {
     const nF = flojeAntal(p), kanDele = nF % 2 === 0, delt = kanDele && p.dFoldDel === 'midt', lige = delt && (nF / 2) % 2 === 1;
     bg.querySelector('#eDFoldDel').classList.toggle('hidden', !kanDele);
     bg.querySelector('#eDFoldSide').classList.toggle('hidden', lige);
+    bg.querySelector('#eDFoldGaa').classList.toggle('hidden', !delt);
+    bg.querySelectorAll('#eDFoldGaa button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dFoldGaa === 'h' ? 'h' : 'v')));
     const [bV, bH] = bg.querySelectorAll('#eDFoldSide button');
     bV.textContent = delt ? 'Flest mod venstre' : 'Foldes mod venstre'; bH.textContent = delt ? 'Flest mod højre' : 'Foldes mod højre';
     bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (delt ? 'midt' : 'en')));
@@ -1553,6 +1577,7 @@ function editPos(s, a, existing) {
     p.dKind = c2.dataset.k; if (p.dKind !== 'hoved' && p.dGlas === undefined) p.dGlas = true;
     if (p.dKind === 'folde' && !p.dFloj) p.dFloj = 3; updDor(); redraw(); });
   bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.onclick = () => { p.dFoldDel = b2.dataset.v; updDor(); redraw(); });
+  bg.querySelectorAll('#eDFoldGaa button').forEach(b2 => b2.onclick = () => { p.dFoldGaa = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDFoldSide button').forEach(b2 => b2.onclick = () => { p.dFoldSide = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDSkyd button').forEach(b2 => b2.onclick = () => { p.dSkyd = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDFloj button').forEach(b2 => b2.onclick = () => { p.dFloj = +b2.dataset.v; updDor(); redraw(); });

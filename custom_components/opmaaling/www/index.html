@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.6.2';
+const APP_VERSION = '0.6.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -594,6 +594,11 @@ function plainDrawing(p, maxSide) {
     const i2 = rw * 1.2, df = dFyldOf(p);
     if (df !== 'glas') { tegnFyld(x, df, a + i2, b2 - i2, c2 + i2, d - i2, lw); return; }
     x.fillStyle = GLAS; x.fillRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2); x.strokeRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2);
+    // sprosser: samme antal lodrette/vandrette i hver fløj, jævnt fordelt
+    const nV = L.v.filter(l => l.t === 'sprosse').length, nH = L.h.filter(l => l.t === 'sprosse').length;
+    const gxa = a + i2, gxb = b2 - i2, gya = c2 + i2, gyb = d - i2; x.fillStyle = RAMME;
+    even(gxa, gxb, nV, ts).forEach(cc => { x.fillRect(cc - ts / 2, gya, ts, gyb - gya); x.strokeRect(cc - ts / 2, gya, ts, gyb - gya); });
+    even(gya, gyb, nH, ts).forEach(cc => { x.fillRect(gxa, cc - ts / 2, gxb - gxa, ts); x.strokeRect(gxa, cc - ts / 2, gxb - gxa, ts); });
   };
   if (dk === 'skyde' || dk === 'folde') {
     const ix0 = f + gap, ix1 = w - f - gap, iy0 = f + gap, iy1 = h - fb - gap, iw = ix1 - ix0;
@@ -1745,7 +1750,10 @@ function editPos(s, a, existing) {
   bg.querySelector('#eLines').onclick = async () => {
     read();
     const L = await linesEditor(p, fu);
-    if (L) { p.symP = L.symP; p.symS = L.symS; delete L.symP; delete L.symS; delete p.sym; p.lines = L; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
+    if (L) { p.symP = L.symP; p.symS = L.symS; delete L.symP; delete L.symS; delete p.sym; p.lines = L; p.visning = 'tegning';
+      // dør med sprosser: sprosser sidder i glas, så døren sættes til glas
+      if (p.type === 'dor' && [...(L.v || []), ...(L.h || [])].some(l => l.t === 'sprosse') && dFyldOf(p) !== 'glas') { p.dFyld = 'glas'; p.dGlas = true; updDor(); toast('Døren er sat til glas, så sprosserne kan ses'); }
+      showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
   };
   const autoLines = async () => {
     try { const L = detectLines(await photoImg(fu), p.crop); p.lines = L; p.visning = 'tegning';

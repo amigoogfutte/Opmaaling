@@ -131,7 +131,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.3.5';
+const APP_VERSION = '0.3.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -729,7 +729,8 @@ function linesEditor(p, fu) {
 }
 
 // Samler billede/tegning med målpile og tekst
-async function makeSketch(p, maxSide = 700) {
+async function makeSketch(p, maxSide = 700, opts = {}) {
+  const extraLines = opts.utenTekst ? [] : sketchExtra(p);
   let body = null;
   const fu = p.fotoId ? await fotoURL(p.fotoId) : null;
   // Foto-skitse kun når det er valgt (eller for ældre positioner uden tegning)
@@ -738,7 +739,7 @@ async function makeSketch(p, maxSide = 700) {
   if (!body) body = plainDrawing(p, Math.round(maxSide * 0.75));
   const u = Math.max(body.width, body.height) / 700; // skala for tekst
   const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
-  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (2.6 + (harPlade(p) ? 0.3 : 0) + 1.3 * sketchExtra(p).length));
+  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (2.6 + (harPlade(p) ? 0.3 : 0) + 1.3 * extraLines.length));
   const ctxMeasure = document.createElement('canvas').getContext('2d');
   ctxMeasure.font = `600 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
   const hTxt = `${fmtMM(p.h)} mm`;
@@ -795,7 +796,7 @@ async function makeSketch(p, maxSide = 700) {
   x.fillText(`B ${fmtMM(p.b)} mm`, (L + R) / 2, yb + fs * 0.35);
   x.textAlign = 'left'; x.textBaseline = 'middle';
   x.save(); x.fillText('H', xr + fs * 0.35, (T + Bt) / 2 - fs * 0.6); x.fillText(hTxt, xr + fs * 0.35, (T + Bt) / 2 + fs * 0.6); x.restore();
-  const extra = sketchExtra(p);
+  const extra = extraLines;
   const maxW = W - padL * 2;
   const fit = t => { if (x.measureText(t).width <= maxW) return t; while (t.length > 3 && x.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; };
   x.font = `600 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`;
@@ -1454,14 +1455,17 @@ async function makePDF(s, only) {
   y += 6; text(`I alt: ${antalTxt(t)}. Mål i mm, bredde × højde, målt midt på.`, M, 10);
   y += 8;
   for (const a of adrs) {
-    if (y > BOT - 40) { doc.addPage(); y = M; }
+    // overskriften skal stå på samme side som første vindue
+    if (a.pos.length) { const c0 = await makeSketch(a.pos[0], 300, { utenTekst: true }); const h0 = Math.min(95, 78 * c0.height / c0.width) + 6;
+      if (y + 10 + Math.max(h0, 7 + posLines(a.pos[0]).length * 5 + 6) > BOT) { doc.addPage(); y = M + 5; } }
+    else if (y > BOT - 40) { doc.addPage(); y = M + 5; }
     const ta = totalsP(a.pos);
     doc.setFillColor(230, 238, 248); doc.rect(M, y - 5, PW - 2 * M, 9, 'F');
     y += 1.5; text(a.adresse, M + 3, 12, 'bold', [23, 74, 132]);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(antalTxt(ta), PW - M - 3, y, { align: 'right' });
     y += 9;
     for (const p of a.pos) {
-      const c = await makeSketch(p, 700);
+      const c = await makeSketch(p, 700, { utenTekst: true });
       const imgW = 78, imgH = Math.min(95, imgW * c.height / c.width), iw = imgH < imgW * c.height / c.width ? imgH * c.width / c.height : imgW;
       const lines = posLines(p).flatMap(l => doc.setFontSize(10) && doc.splitTextToSize(l, PW - M - (M + imgW + 6)));
       const blockH = Math.max(imgH, 7 + lines.length * 5) + 6;

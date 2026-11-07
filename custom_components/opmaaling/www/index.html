@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.6';
+const APP_VERSION = '0.4.7';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -893,7 +893,11 @@ function linesEditor(p, fu) {
         const old = openAt(L, fr), pt = [r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)];
         L.fast = L.fast.filter(q => !inFr(fr, q)); L.open = L.open.filter(o => !inFr(fr, o.pt));
         if (t2 === 'fast') L.fast.push(pt);
-        else if (t2 !== 'ingen') L.open.push({ pt, type: t2, hinge: old && old.hinge || 'v', brems: t2 === 'side' && !!(old && old.brems) });
+        else if (t2 !== 'ingen') {
+          // gæt hængselsiden: rammer i højre halvdel hængsles i højre side, ellers venstre
+          const gaet = (fr[0] + fr[1]) / 2 > 0.501 ? 'h' : 'v';
+          L.open.push({ pt, type: t2, hinge: old && old.type === 'side' ? old.hinge : gaet, brems: t2 === 'side' && !!(old && old.brems) });
+        }
       }
       draw();
     });

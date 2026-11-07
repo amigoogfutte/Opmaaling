@@ -807,7 +807,7 @@ function editPos(s, a, existing) {
   const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: allPos(s).reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: last ? last.stafk || '' : '', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false,
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
   };
@@ -1019,7 +1019,8 @@ function editPos(s, a, existing) {
   updRaaSel();
   const stafkBtns = bg.querySelectorAll('#eStafk button');
   const updStafk = () => stafkBtns.forEach(b2 => b2.classList.toggle('on', b2.dataset.s === p.stafk));
-  stafkBtns.forEach(b2 => b2.onclick = () => { p.stafk = p.stafk === b2.dataset.s ? '' : b2.dataset.s; updStafk(); redraw(); });
+  if (!p.stafk) p.stafk = 'uden';
+  stafkBtns.forEach(b2 => b2.onclick = () => { p.stafk = b2.dataset.s; updStafk(); redraw(); });
   updStafk();
   bg.querySelector('#eTil').addEventListener('change', e => { bg.querySelector('#eTilWrap').classList.toggle('hidden', !e.target.checked); redraw(); });
   for (const P of ['Fu', 'Fi']) bg.querySelector(`#e${P}Ens`).addEventListener('change', e => {

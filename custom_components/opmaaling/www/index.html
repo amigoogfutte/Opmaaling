@@ -716,6 +716,14 @@ async function retSag(s) {
 function sagMenu(s) {
   menuSheet(sagLabel(s), [
     [() => retSag(s), 'Ret sagsnummer / kunde'],
+    [async () => {
+      if (!(await dialog({ text: 'Giv alle positioner i sagen nye numre 1, 2, 3 … i den rækkefølge, de har nu?', ok: 'Nummerér' }))) return;
+      const all = (s.adresser || []).flatMap((ad, ai) => ad.pos.map((q, qi) => ({ q, ai, qi })))
+        .sort((x, y) => (x.q.nr || 0) - (y.q.nr || 0) || x.ai - y.ai || x.qi - y.qi);
+      all.forEach(({ q }, i) => { q.nr = i + 1; });
+      for (const ad of s.adresser) ad.pos.sort((x, y) => x.nr - y.nr);
+      touch(s); save(); render(); toast('Alle positioner er nummereret');
+    }, 'Nummerér alle positioner forfra (1, 2, 3 …)'],
     [() => arkiver(s, !s.arkiveret), s.arkiveret ? 'Genåbn sag' : 'Arkivér sag'],
     [async () => { if (await dialog({ text: `Slet ${sagLabel(s)} med alle adresser og ${allPos(s).length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
       s.deleted = true; s.adresser = []; s.pos = []; touch(s); save(); view = { name: s.arkiveret ? 'arkiv' : 'home' }; render(); } }, 'Slet sag', 'danger']
@@ -724,7 +732,6 @@ function sagMenu(s) {
 function adrMenu(s, a) {
   menuSheet(a.adresse, [
     [async () => { const r = await formDialog('Ret adresse', [['Adresse', a.adresse, '']], 'Gem'); if (r && r[0]) { a.adresse = r[0]; touch(s); save(); render(); } }, 'Ret adresse'],
-    [() => { a.pos.forEach((p, i) => p.nr = i + 1); touch(s); save(); render(); toast('Nummereret'); }, 'Nummerér positioner forfra (1, 2, 3 …)'],
     [async () => { if (await dialog({ text: `Slet adressen "${a.adresse}" med ${a.pos.length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
       s.adresser = s.adresser.filter(x => x.id !== a.id); touch(s); save(); view = { ...view, name: 'sag' }; render(); } }, 'Slet adresse', 'danger']
   ]);
@@ -797,7 +804,7 @@ function editPos(s, a, existing) {
   const isNew = !existing;
   const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
-    id: uid(), nr: a.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
+    id: uid(), nr: allPos(s).reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
     rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
@@ -956,9 +963,11 @@ function editPos(s, a, existing) {
   };
   $('#fileCam').onchange = onFile; $('#fileLib').onchange = onFile;
 
-  const doSave = () => {
+  const doSave = async () => {
     read();
     if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
+    const dup = (s.adresser || []).map(ad => [ad, ad.pos.find(q => q.id !== p.id && q.nr === p.nr)]).find(([, q]) => q);
+    if (dup && !(await dialog({ text: `Pos. ${p.nr} bruges allerede på ${dup[0].adresse}. Gem alligevel med samme nummer?`, ok: 'Gem alligevel' }))) return;
     const i = a.pos.findIndex(q => q.id === p.id);
     if (i >= 0) a.pos[i] = p; else a.pos.push(p);
     a.pos.sort((x, y) => x.nr - y.nr);

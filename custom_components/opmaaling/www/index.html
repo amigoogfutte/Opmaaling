@@ -131,7 +131,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.3.2';
+const APP_VERSION = '0.3.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -329,70 +329,89 @@ function edgeSketch(img, maxSide, crop) {
 function normLines(L) {
   const f = arr => (arr || []).map(x => typeof x === 'number' ? { p: x, t: 'post', a: 0, b: 1 }
     : { p: +x.p, t: x.t === 'sprosse' ? 'sprosse' : 'post', a: x.a !== undefined ? +x.a : 0, b: x.b !== undefined ? +x.b : 1 });
-  return { v: f(L && L.v), h: f(L && L.h) };
+  const fast = (L && Array.isArray(L.fast) ? L.fast : []).filter(q => Array.isArray(q) && q.length === 2).map(([a, b]) => [+a, +b]);
+  return { v: f(L && L.v), h: f(L && L.h), fast };
 }
+// Faste felter (uden ramme) gemmes som et punkt inde i feltet
+const inFr = (fr, [fx, fy]) => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <= fr[3];
+const isFast = (L, fr) => (L.fast || []).some(q => inFr(fr, q));
+const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
+const fastTxt = p => { const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
 const isPartial = l => l.a > 0.001 || l.b < 0.999;
-const hasPartial = L => [...L.v, ...L.h].some(isPartial);
+const hasPartial = (L, t) => [...L.v, ...L.h].some(l => (!t || l.t === t) && isPartial(l));
+const r3 = v => Math.round(v * 1000) / 1000;
 // Gem kun a/b når stregen ikke går hele vejen
-const packLines = L => { const pk = arr => arr.slice().sort((x, y) => x.p - y.p || x.a - y.a).map(l => isPartial(l) ? { p: l.p, t: l.t, a: l.a, b: l.b } : { p: l.p, t: l.t }); return { v: pk(L.v), h: pk(L.h) }; };
-// Delte streger samles igen til hele streger (bruges når man vælger symmetrisk)
-function mergePartials(L) {
-  for (const k of ['v', 'h']) {
-    const out = [];
-    for (const l of L[k]) { l.a = 0; l.b = 1; if (!out.some(o => o.t === l.t && Math.abs(o.p - l.p) < 0.02)) out.push(l); }
-    L[k] = out;
-  }
-  return L;
-}
-// Symmetrisk: poster jævnt over hele vinduet, sprosser jævnt i hver ramme
+const packLines = L => {
+  const pk = arr => arr.slice().sort((x, y) => x.p - y.p || x.a - y.a).map(l => isPartial(l) ? { p: r3(l.p), t: l.t, a: r3(l.a), b: r3(l.b) } : { p: r3(l.p), t: l.t });
+  const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]); return out;
+};
+
+// Symmetri vælges hver for sig for poster og sprosser (ældre data: ét fælles valg)
 const isSym = p => p.sym !== undefined ? !!p.sym : !p.lines;
-// Hvilket felt (mellem poster) hver sprosse står i – ud fra de gemte placeringer
-function fieldBuckets(arr) {
-  const posts = arr.filter(l => l.t === 'post').map(l => l.p).sort((a, b) => a - b);
-  const counts = Array(posts.length + 1).fill(0), of = new Map();
-  for (const l of arr) if (l.t === 'sprosse') { const fi = posts.filter(pp => pp < l.p).length; counts[fi]++; of.set(l, fi); }
-  return { np: posts.length, counts, of };
-}
-// Lægger stregerne symmetrisk – ændrer placeringerne i de samme objekter, så et valg af streger bevares
-function symLines(L) {
-  if (hasPartial(L)) mergePartials(L);
-  for (const k of ['v', 'h']) {
-    const { np, of } = fieldBuckets(L[k]);
-    const posts = L[k].filter(l => l.t === 'post').sort((a, b) => a.p - b.p);
-    const edges = [0, ...posts.map((_, i) => (i + 1) / (np + 1)), 1];
-    posts.forEach((l, i) => { l.p = Math.round(edges[i + 1] * 1000) / 1000; });
-    for (let fi = 0; fi <= np; fi++) {
-      const sp = L[k].filter(l => l.t === 'sprosse' && of.get(l) === fi).sort((a, b) => a.p - b.p);
-      sp.forEach((l, j) => { l.p = Math.round((edges[fi] + (edges[fi + 1] - edges[fi]) * (j + 1) / (sp.length + 1)) * 1000) / 1000; });
-    }
-  }
-  return L;
-}
-const shownLines = p => isSym(p) ? symLines(normLines(p.lines)) : normLines(p.lines);
-const symTxt = p => { if (p.type === 'glas') return ''; const L = normLines(p.lines); if (!(L.v.length + L.h.length)) return ''; return isSym(p) && !hasPartial(L) ? 'Symmetrisk' : 'Asymmetrisk'; };
+const symP = p => p.symP !== undefined ? !!p.symP : isSym(p);
+const symS = p => p.symS !== undefined ? !!p.symS : isSym(p);
 
 // Felter (rammer) ud fra poster, der kan gå hele eller kun en del af vejen.
-// Området inden for karmen deles i et fint gitter; celler, der ikke er adskilt af en post, slås sammen.
-function layoutFields(segV, segH, x0, x1, y0, y1, tp) {
-  const uniq = arr => arr.sort((a, b) => a - b).filter((v, i, a2) => i === 0 || v - a2[i - 1] > 0.5);
-  const X = uniq([x0, x1, ...segV.map(s => s.c), ...segH.flatMap(s => [s.s, s.e])].filter(v => v >= x0 - 0.1 && v <= x1 + 0.1));
-  const Y = uniq([y0, y1, ...segH.map(s => s.c), ...segV.flatMap(s => [s.s, s.e])].filter(v => v >= y0 - 0.1 && v <= y1 + 0.1));
+// Området deles i et fint gitter; celler, der ikke er adskilt af en post, slås sammen. eps = tolerance.
+function fieldRects(segV, segH, x0, x1, y0, y1, eps) {
+  const uniq = arr => arr.sort((a, b) => a - b).filter((v, i, a2) => i === 0 || v - a2[i - 1] > eps);
+  const X = uniq([x0, x1, ...segV.map(s => s.c), ...segH.flatMap(s => [s.s, s.e])].filter(v => v >= x0 - eps && v <= x1 + eps));
+  const Y = uniq([y0, y1, ...segH.map(s => s.c), ...segV.flatMap(s => [s.s, s.e])].filter(v => v >= y0 - eps && v <= y1 + eps));
   const nx = X.length - 1, ny = Y.length - 1, parent = Array.from({ length: nx * ny }, (_, i) => i);
   const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
   const join = (a, b) => { parent[find(a)] = find(b); };
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const cx = (X[i] + X[i + 1]) / 2, cy = (Y[j] + Y[j + 1]) / 2;
-    if (i + 1 < nx && !segV.some(s => Math.abs(s.c - X[i + 1]) < 0.6 && s.s <= cy && s.e >= cy)) join(j * nx + i, j * nx + i + 1);
-    if (j + 1 < ny && !segH.some(s => Math.abs(s.c - Y[j + 1]) < 0.6 && s.s <= cx && s.e >= cx)) join(j * nx + i, (j + 1) * nx + i);
+    if (i + 1 < nx && !segV.some(s => Math.abs(s.c - X[i + 1]) < eps * 1.2 && s.s <= cy && s.e >= cy)) join(j * nx + i, j * nx + i + 1);
+    if (j + 1 < ny && !segH.some(s => Math.abs(s.c - Y[j + 1]) < eps * 1.2 && s.s <= cx && s.e >= cx)) join(j * nx + i, (j + 1) * nx + i);
   }
   const box = new Map();
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const r = find(j * nx + i), b = box.get(r) || [Infinity, -Infinity, Infinity, -Infinity];
     box.set(r, [Math.min(b[0], X[i]), Math.max(b[1], X[i + 1]), Math.min(b[2], Y[j]), Math.max(b[3], Y[j + 1])]);
   }
-  return [...box.values()].map(([a, b, c, d]) => [a > x0 + 0.5 ? a + tp / 2 : a, b < x1 - 0.5 ? b - tp / 2 : b, c > y0 + 0.5 ? c + tp / 2 : c, d < y1 - 0.5 ? d - tp / 2 : d])
-    .sort((p1, p2) => p1[2] - p2[2] || p1[0] - p2[0]);
+  return [...box.values()].sort((p1, p2) => p1[2] - p2[2] || p1[0] - p2[0]);
 }
+const postSegs = L => ({
+  v: L.v.filter(l => l.t === 'post').map(l => ({ c: l.p, s: l.a, e: l.b })),
+  h: L.h.filter(l => l.t === 'post').map(l => ({ c: l.p, s: l.a, e: l.b }))
+});
+// Rammernes felter i brøkdele (0–1) ud fra de gemte poster
+const fracFields = L => { const sg = postSegs(L); return fieldRects(sg.v, sg.h, 0, 1, 0, 1, 0.002); };
+// Sprosser, der går gennem et felt
+const sprIn = (L, k, fr) => L[k].filter(l => l.t === 'sprosse' && (k === 'v'
+  ? l.p > fr[0] + 0.004 && l.p < fr[1] - 0.004 && l.a < fr[3] - 0.004 && l.b > fr[2] + 0.004
+  : l.p > fr[2] + 0.004 && l.p < fr[3] - 0.004 && l.a < fr[1] - 0.004 && l.b > fr[0] + 0.004));
+
+// Symmetriske poster: jævnt fordelt (delte poster samles først)
+function symPosts(L) {
+  for (const k of ['v', 'h']) {
+    const ps = L[k].filter(l => l.t === 'post').sort((a, b) => a.p - b.p);
+    const keep = []; for (const l of ps) { l.a = 0; l.b = 1; if (!keep.some(o => Math.abs(o.p - l.p) < 0.02)) keep.push(l); }
+    L[k] = [...keep, ...L[k].filter(l => l.t !== 'post')];
+    keep.forEach((l, i) => { l.p = r3((i + 1) / (keep.length + 1)); });
+  }
+  return L;
+}
+// Symmetriske sprosser: i hver ramme fordeles dens sprosser jævnt (antallet pr. ramme bevares)
+function symSpr(L) {
+  const fields = fracFields(L), out = { v: [], h: [] };
+  for (const fr of fields) {
+    const nv = sprIn(L, 'v', fr).length, nh = sprIn(L, 'h', fr).length;
+    for (let j = 1; j <= nv; j++) out.v.push({ p: r3(fr[0] + (fr[1] - fr[0]) * j / (nv + 1)), t: 'sprosse', a: r3(fr[2]), b: r3(fr[3]) });
+    for (let j = 1; j <= nh; j++) out.h.push({ p: r3(fr[2] + (fr[3] - fr[2]) * j / (nh + 1)), t: 'sprosse', a: r3(fr[0]), b: r3(fr[1]) });
+  }
+  for (const k of ['v', 'h']) L[k] = [...L[k].filter(l => l.t === 'post'), ...out[k]];
+  return L;
+}
+const symTxt = p => {
+  if (p.type === 'glas') return '';
+  const L = normLines(p.lines), hp = [...L.v, ...L.h].some(l => l.t === 'post'), hs = [...L.v, ...L.h].some(l => l.t === 'sprosse');
+  if (!hp && !hs) return '';
+  const sp = symP(p) && !hasPartial(L, 'post'), ss = symS(p);
+  if ((!hp || !hs) || sp === ss) return (hp ? sp : ss) ? 'Symmetrisk' : 'Asymmetrisk';
+  return `Poster ${sp ? 'symmetriske' : 'asymmetriske'}, sprosser ${ss ? 'symmetriske' : 'asymmetriske'}`;
+};
 
 // Ren tegning: karm, poster, rammer, glas og sprosser – i forholdet bredde/højde
 function plainDrawing(p, maxSide) {
@@ -405,8 +424,8 @@ function plainDrawing(p, maxSide) {
   const m = Math.min(w, h), lw = Math.max(1.5, maxSide / 200);
   const glas = p.type === 'glas';
   const L = normLines(p.lines);
-  const sym = isSym(p) && !hasPartial(L);
   if (glas) { L.v.forEach(l => l.t = 'sprosse'); L.h.forEach(l => l.t = 'sprosse'); }
+  const sP = symP(p) && !hasPartial(L, 'post'), sS = symS(p);
   const f = glas ? 0 : Math.max(6, m * 0.055);      // karm
   const tp = Math.max(6, m * 0.05);                   // post
   const rw = glas ? 0 : Math.max(5, m * 0.045);      // ramme
@@ -416,41 +435,58 @@ function plainDrawing(p, maxSide) {
   x.fillStyle = glas ? '#fff' : KARM; x.fillRect(0, 0, w, h);
   x.lineWidth = lw; x.strokeStyle = LINE;
   const even = (a, b, n, bar) => { const cell = (b - a - n * bar) / (n + 1); return Array.from({ length: n }, (_, i) => a + (i + 1) * cell + i * bar + bar / 2); };
-  // tegner én ramme med glas; spr(gx0,gx1,gy0,gy1) giver sprosser som [{o:'v'|'h', c, s, e}]
-  const frame = (x0, x1, y0, y1, spr) => {
-    if (x1 - x0 < 4 || y1 - y0 < 4) return;
+
+  // Felterne: fr = placering i brøkdele (til at finde sprosserne), px = placering i punkter (til tegningen)
+  const fields = [];
+  if (sP) {
+    // lige store felter mellem karm og poster
+    const nv = L.v.filter(l => l.t === 'post').length, nh = L.h.filter(l => l.t === 'post').length;
+    const cuts = (n, len) => { const cs = even(f, len - f, n, tp), out = [[f, null]];
+      for (const mm of cs) { out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); } out[out.length - 1][1] = len - f; return out; };
+    const edges = (k) => [0, ...L[k].filter(l => l.t === 'post').map(l => l.p).sort((a, b) => a - b), 1];
+    const ev = edges('v'), eh = edges('h'), xs = cuts(nv, w), ys = cuts(nh, h);
+    xs.forEach(([x0, x1], i) => ys.forEach(([y0, y1], j) => fields.push({ fr: [ev[i], ev[i + 1], eh[j], eh[j + 1]], px: [x0, x1, y0, y1] })));
+  } else {
+    for (const fr of fracFields(L)) fields.push({ fr, px: [
+      fr[0] < 0.001 ? f : fr[0] * w + tp / 2, fr[1] > 0.999 ? w - f : fr[1] * w - tp / 2,
+      fr[2] < 0.001 ? f : fr[2] * h + tp / 2, fr[3] > 0.999 ? h - f : fr[3] * h - tp / 2] });
+  }
+
+  for (const { fr, px: [x0, x1, y0, y1] } of fields) {
+    if (x1 - x0 < 4 || y1 - y0 < 4) continue;
+    const fast = !glas && isFast(L, fr);
     const rx0 = x0 + gap, ry0 = y0 + gap, rx1 = x1 - gap, ry1 = y1 - gap;
-    if (!glas) { x.fillStyle = RAMME; x.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0); x.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); }
-    const gx0 = rx0 + rw, gy0 = ry0 + rw, gx1 = rx1 - rw, gy1 = ry1 - rw;
-    if (gx1 - gx0 < 4 || gy1 - gy0 < 4) return;
+    if (!glas && !fast) { x.fillStyle = RAMME; x.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0); x.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); }
+    const ins = fast ? rw * 0.3 : rw;   // fast felt: glasset sidder direkte i karmen (kun en glasliste)
+    const gx0 = rx0 + ins, gy0 = ry0 + ins, gx1 = rx1 - ins, gy1 = ry1 - ins;
+    if (gx1 - gx0 < 4 || gy1 - gy0 < 4) continue;
     x.fillStyle = GLAS; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
     x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.8; x.beginPath();
     const gw = gx1 - gx0, gh = gy1 - gy0;
     x.moveTo(gx0 + gw * .12, gy0 + gh * .22); x.lineTo(gx0 + gw * .26, gy0 + gh * .08);
     x.moveTo(gx0 + gw * .14, gy0 + gh * .32); x.lineTo(gx0 + gw * .36, gy0 + gh * .1); x.stroke(); x.restore();
+    if (fast) {
+      x.save(); x.fillStyle = '#7a8aa3'; x.font = `600 ${Math.max(10, Math.min(gw, gh) * 0.14)}px -apple-system, Helvetica, Arial, sans-serif`;
+      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('FAST', (gx0 + gx1) / 2, gy1 - Math.max(10, gh * 0.12)); x.restore();
+    }
+    // sprosser i denne ramme
+    const vs = sprIn(L, 'v', fr), hs = sprIn(L, 'h', fr), spr = [];
+    if (sS) {
+      even(gx0, gx1, vs.length, ts).forEach(cc => spr.push({ o: 'v', c: cc, s: gy0, e: gy1 }));
+      even(gy0, gy1, hs.length, ts).forEach(cc => spr.push({ o: 'h', c: cc, s: gx0, e: gx1 }));
+    } else {
+      // asymmetrisk: placeringen i forhold til rammen bevares
+      const mapX = v => gx0 + (v - fr[0]) / (fr[1] - fr[0]) * (gx1 - gx0), mapY = v => gy0 + (v - fr[2]) / (fr[3] - fr[2]) * (gy1 - gy0);
+      vs.forEach(l => spr.push({ o: 'v', c: mapX(l.p), s: l.a <= fr[2] + 0.004 ? gy0 : mapY(l.a), e: l.b >= fr[3] - 0.004 ? gy1 : mapY(l.b) }));
+      hs.forEach(l => spr.push({ o: 'h', c: mapY(l.p), s: l.a <= fr[0] + 0.004 ? gx0 : mapX(l.a), e: l.b >= fr[1] - 0.004 ? gx1 : mapX(l.b) }));
+    }
     x.fillStyle = RAMME;
-    for (const s of spr(gx0, gx1, gy0, gy1)) {
+    for (const s of spr) {
       if (s.o === 'v') { if (s.c <= gx0 + ts || s.c >= gx1 - ts) continue; const a = Math.max(gy0, s.s), b = Math.min(gy1, s.e); if (b - a < 3) continue;
         x.fillRect(s.c - ts / 2, a, ts, b - a); x.strokeRect(s.c - ts / 2, a, ts, b - a); }
       else { if (s.c <= gy0 + ts || s.c >= gy1 - ts) continue; const a = Math.max(gx0, s.s), b = Math.min(gx1, s.e); if (b - a < 3) continue;
         x.fillRect(a, s.c - ts / 2, b - a, ts); x.strokeRect(a, s.c - ts / 2, b - a, ts); }
     }
-  };
-  if (sym) {
-    // Symmetrisk: lige store felter mellem karm og poster, og lige store glasfelter mellem sprosser
-    const cuts = (n, len) => { const cs = even(f, len - f, n, tp), out = [[f, null]];
-      for (const mm of cs) { out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); } out[out.length - 1][1] = len - f; return out; };
-    const bV = fieldBuckets(L.v), bH = fieldBuckets(L.h);
-    const xs = cuts(bV.np, w), ys = cuts(bH.np, h);
-    for (const [xi, [x0, x1]] of xs.entries()) for (const [yi, [y0, y1]] of ys.entries())
-      frame(x0, x1, y0, y1, (gx0, gx1, gy0, gy1) => [
-        ...even(gx0, gx1, bV.counts[xi] || 0, ts).map(cc => ({ o: 'v', c: cc, s: gy0, e: gy1 })),
-        ...even(gy0, gy1, bH.counts[yi] || 0, ts).map(cc => ({ o: 'h', c: cc, s: gx0, e: gx1 }))]);
-  } else {
-    const seg = (l, along, across) => ({ c: l.p * across, s: l.a * along, e: l.b * along });
-    const segV = L.v.filter(l => l.t === 'post').map(l => seg(l, h, w)), segH = L.h.filter(l => l.t === 'post').map(l => seg(l, w, h));
-    const sprs = [...L.v.filter(l => l.t === 'sprosse').map(l => ({ o: 'v', ...seg(l, h, w) })), ...L.h.filter(l => l.t === 'sprosse').map(l => ({ o: 'h', ...seg(l, w, h) }))];
-    for (const [x0, x1, y0, y1] of layoutFields(segV, segH, f, w - f, f, h - f, tp)) frame(x0, x1, y0, y1, () => sprs);
   }
   x.lineWidth = lw * 1.4; x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
   return c;
@@ -503,21 +539,26 @@ function detectLines(img, crop) {
 // Skærm til at rette tegningens poster og sprosser med fingeren
 function linesEditor(p, fu) {
   return new Promise(async resolve => {
-    let L = normLines(p.lines), sym = isSym(p);
-    if (sym) L = symLines(L);
+    let L = normLines(p.lines), sp = symP(p), ss = symS(p);
+    const resym = () => { if (sp) symPosts(L); if (ss) symSpr(L); };
+    resym();
     let img = null; if (fu) { try { img = await photoImg(fu); } catch (e) { img = null; } }
     const bg = document.createElement('div'); bg.className = 'dialog-bg'; bg.style.alignItems = 'stretch'; bg.style.padding = '0';
     bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
       <div style="text-align:center;font-weight:600;margin-bottom:2px">Tegning af vinduet</div>
       <div style="text-align:center;font-size:13.5px;color:#bbb;margin-bottom:8px">
-        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk for at vælge en eller flere. Træk for at flytte – kun stykket mellem de nærmeste krydsende streger flytter sig.</div>
+        <span style="color:#ffcc00;font-weight:700">━ Post</span> deler i rammer &nbsp;·&nbsp; <span style="color:#4fc3ff;font-weight:700">━ Sprosse</span> sidder i glasset<br>Tryk på en streg for at vælge den – eller på et felt for at give det sprosser eller gøre det fast. Træk for at flytte.</div>
       <div id="lWrap" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
         <div id="lBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="lCv" style="display:block"></canvas></div>
       </div>
-      <div class="seg" id="lSym" style="margin-top:8px"><button data-s="1">Symmetrisk</button><button data-s="0">Asymmetrisk</button></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1"><div style="font-size:12px;color:#bbb;margin-bottom:3px">Poster</div><div class="seg" id="lSymP"><button data-s="1">Symm.</button><button data-s="0">Asymm.</button></div></div>
+        <div style="flex:1"><div style="font-size:12px;color:#bbb;margin-bottom:3px">Sprosser</div><div class="seg" id="lSymS"><button data-s="1">Symm.</button><button data-s="0">Asymm.</button></div></div>
+      </div>
       <div class="btns" style="margin-top:8px"><button class="btn sec small" id="lAddVP">+ Lodret post</button><button class="btn sec small" id="lAddHP">+ Vandret post</button></div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAddVS">+ Lodret sprosse</button><button class="btn sec small" id="lAddHS">+ Vandret sprosse</button></div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lType">Skift til sprosse</button><button class="btn danger small" id="lDel">Fjern valgt</button></div>
+      <div class="btns" style="margin-top:0"><button class="btn sec small" id="lFast">Gør fast</button></div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Fjern alle</button></div>
       <div class="btns" style="margin-top:0"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
     </div>`;
@@ -538,8 +579,23 @@ function linesEditor(p, fu) {
       else { x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); }
       draw();
     }
+    // valgte rammer gemmes som punkter (brøkdele), så valget overlever, når felterne regnes om
+    let selF = [];
+    const fieldAt = (fx, fy) => fracFields(L).find(fr => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <= fr[3]);
+    const selFields = () => { const out = []; for (const [fx, fy] of selF) { const fr = fieldAt(fx, fy); if (fr && !out.includes(fr)) out.push(fr); } return out; };
     function draw() {
-      box.querySelectorAll('.ln').forEach(e => e.remove());
+      box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
+      for (const fr of fracFields(L).filter(fr2 => isFast(L, fr2))) {
+        const el = document.createElement('div'); el.className = 'fsel';
+        el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none`;
+        el.innerHTML = '<span style="background:#ffcc00;color:#111;font-weight:700;font-size:12px;padding:2px 6px;border-radius:6px;margin-bottom:8px">FAST</span>';
+        box.appendChild(el);
+      }
+      for (const fr of selFields()) {
+        const el = document.createElement('div'); el.className = 'fsel';
+        el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;background:rgba(79,195,255,.22);outline:2px dashed #4fc3ff;outline-offset:-4px;pointer-events:none`;
+        box.appendChild(el);
+      }
       for (const k of ['v', 'h']) L[k].forEach((l, i) => {
         const el = document.createElement('div'); el.className = 'ln'; el.dataset.k = k; el.dataset.i = i;
         const on = sel.has(l);
@@ -550,17 +606,31 @@ function linesEditor(p, fu) {
         el.innerHTML = `<div style="background:${col};${k === 'v' ? `width:${th}px;height:100%` : `height:${th}px;width:100%`};box-shadow:0 0 3px #000"></div>`;
         box.appendChild(el);
       });
-      bg.querySelectorAll('#lSym button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === sym));
+      bg.querySelectorAll('#lSymP button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === sp));
+      bg.querySelectorAll('#lSymS button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === ss));
       const valgt = [...sel], n = valgt.length;
       const alleSpr = n && valgt.every(l => l.t === 'sprosse');
-      bg.querySelector('#lDel').disabled = !n; bg.querySelector('#lType').disabled = !n;
-      bg.querySelector('#lDel').textContent = n > 1 ? `Fjern valgte (${n})` : 'Fjern valgt';
+      const nf = selFields().length;
+      bg.querySelector('#lDel').disabled = !n && !nf; bg.querySelector('#lType').disabled = !n;
+      bg.querySelector('#lDel').textContent = n ? (n > 1 ? `Fjern valgte (${n})` : 'Fjern valgt') : nf ? `Fjern sprosser i ramme${nf > 1 ? 'r' : ''}` : 'Fjern valgt';
+      const frs = selFields(), alleFast = frs.length && frs.every(fr => isFast(L, fr));
+      bg.querySelector('#lFast').disabled = !nf;
+      bg.querySelector('#lFast').textContent = !nf ? 'Gør fast (vælg en ramme først)' : alleFast ? `Gør oplukkelig (med ramme)` : `Gør fast (uden ramme)`;
+      bg.querySelector('#lAddVS').textContent = nf ? `+ Lodret sprosse i ramme${nf > 1 ? 'r' : ''}` : '+ Lodret sprosse';
+      bg.querySelector('#lAddHS').textContent = nf ? `+ Vandret sprosse i ramme${nf > 1 ? 'r' : ''}` : '+ Vandret sprosse';
       bg.querySelector('#lType').textContent = (alleSpr ? 'Skift til post' : 'Skift til sprosse') + (n > 1 ? ` (${n})` : '');
     }
     // Tryk på en streg = vælg/fravælg (flere kan vælges). Træk i en streg = flyt den.
     let drag = null;
     box.addEventListener('pointerdown', e => {
-      const el = e.target.closest('.ln'); if (!el) { sel.clear(); draw(); return; }
+      const el = e.target.closest('.ln');
+      if (!el) {
+        const r = box.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+        const fr = fieldAt(fx, fy); sel.clear();
+        if (fr) { const i = selF.findIndex(([x2, y2]) => fieldAt(x2, y2) === fr); if (i >= 0) selF.splice(i, 1); else selF.push([fx, fy]); }
+        draw(); return;
+      }
+      selF = [];
       drag = { k: el.dataset.k, l: L[el.dataset.k][+el.dataset.i], x: e.clientX, y: e.clientY, moved: false };
       box.setPointerCapture(e.pointerId); e.preventDefault();
     });
@@ -580,12 +650,17 @@ function linesEditor(p, fu) {
     box.addEventListener('pointermove', e => {
       if (!drag) return;
       if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return;
-      if (!drag.moved) { if (sym) { sym = false; toast('Skiftet til asymmetrisk'); } startDrag(e); }
+      if (!drag.moved) {
+        if (drag.l.t === 'post' && sp) { sp = false; toast('Poster: asymmetrisk'); }
+        if (drag.l.t === 'sprosse' && ss) { ss = false; toast('Sprosser: asymmetrisk'); }
+        startDrag(e);
+      }
       drag.moved = true;
       const r = box.getBoundingClientRect();
       const v = drag.k === 'v' ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height;
       drag.l.p = Math.round(Math.min(0.97, Math.max(0.03, v)) * 1000) / 1000;
       for (const [q, end] of drag.attached || []) q[end] = drag.l.p;
+      if (drag.l.t === 'post' && ss) { symSpr(L); sel.clear(); }
       draw();
     });
     const end = () => {
@@ -594,10 +669,20 @@ function linesEditor(p, fu) {
     };
     box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
     const addLine = (k, t) => {
+      const frs = t === 'sprosse' ? selFields() : [];
+      if (frs.length) {
+        for (const fr of frs) {
+          const [lo, hi, a, b] = k === 'v' ? [fr[0], fr[1], fr[2], fr[3]] : [fr[2], fr[3], fr[0], fr[1]];
+          const pts = [lo, ...sprIn(L, k, fr).map(l => l.p).sort((x2, y2) => x2 - y2), hi]; let best = (lo + hi) / 2, gp = 0;
+          for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > gp) { gp = pts[i + 1] - pts[i]; best = (pts[i] + pts[i + 1]) / 2; }
+          L[k].push({ p: r3(best), t, a: r3(a), b: r3(b) });
+        }
+        resym(); sel.clear(); draw(); return;
+      }
       const pts = [0, ...L[k].map(l => l.p).sort((a, b) => a - b), 1]; let best = 0.5, gap = 0;
       for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > gap) { gap = pts[i + 1] - pts[i]; best = (pts[i] + pts[i + 1]) / 2; }
-      const nl = { p: Math.round(best * 1000) / 1000, t, a: 0, b: 1 }; L[k].push(nl); if (sym) symLines(L);
-      sel.clear(); sel.add(nl); draw();
+      const nl = { p: Math.round(best * 1000) / 1000, t, a: 0, b: 1 }; L[k].push(nl); resym();
+      sel.clear(); if (L[k].includes(nl)) sel.add(nl); draw();
     };
     bg.querySelector('#lAddVP').onclick = () => addLine('v', 'post');
     bg.querySelector('#lAddHP').onclick = () => addLine('h', 'post');
@@ -606,20 +691,39 @@ function linesEditor(p, fu) {
     bg.querySelector('#lType').onclick = () => {
       const valgt = [...sel]; if (!valgt.length) return;
       const til = valgt.every(l => l.t === 'sprosse') ? 'post' : 'sprosse';
-      valgt.forEach(l => { l.t = til; }); if (sym) symLines(L); draw();
+      valgt.forEach(l => { l.t = til; }); resym(); if (ss) sel.clear(); draw();
     };
     bg.querySelector('#lDel').onclick = () => {
-      if (!sel.size) return;
+      if (!sel.size) {
+        // fjern sprosser i de valgte rammer – streger, der fortsætter ind i andre rammer, beholdes der
+        for (const fr of selFields()) for (const k of ['v', 'h']) {
+          const [a0, a1] = k === 'v' ? [fr[2], fr[3]] : [fr[0], fr[1]];
+          for (const l of sprIn(L, k, fr)) {
+            if (l.a < a0 - 0.004) L[k].push({ p: l.p, t: l.t, a: l.a, b: a0 });
+            if (l.b > a1 + 0.004) L[k].push({ p: l.p, t: l.t, a: a1, b: l.b });
+            L[k] = L[k].filter(q => q !== l);
+          }
+        }
+        resym(); draw(); return;
+      }
       for (const k of ['v', 'h']) L[k] = L[k].filter(l => !sel.has(l));
-      sel.clear(); if (sym) symLines(L); draw();
+      sel.clear(); resym(); draw();
     };
-    bg.querySelectorAll('#lSym button').forEach(b2 => b2.onclick = () => { sym = b2.dataset.s === '1'; if (sym) { if (hasPartial(L)) toast('Delte streger er samlet igen'); symLines(L); sel.clear(); } draw(); });
-    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [] }; sel.clear(); draw(); };
-    bg.querySelector('#lAuto').onclick = () => { if (img) { L = normLines(detectLines(img, p.crop)); if (sym) symLines(L); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
+    bg.querySelectorAll('#lSymP button').forEach(b2 => b2.onclick = () => { sp = b2.dataset.s === '1'; if (sp) { if (hasPartial(L, 'post')) toast('Delte poster er samlet igen'); resym(); sel.clear(); } draw(); });
+    bg.querySelectorAll('#lSymS button').forEach(b2 => b2.onclick = () => { ss = b2.dataset.s === '1'; if (ss) { resym(); sel.clear(); } draw(); });
+    bg.querySelector('#lFast').onclick = () => {
+      const frs = selFields(); if (!frs.length) return;
+      const alleFast = frs.every(fr => isFast(L, fr));
+      L.fast = (L.fast || []).filter(q => !frs.some(fr => inFr(fr, q)));
+      if (!alleFast) for (const fr of frs) L.fast.push([r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)]);
+      selF = []; draw();
+    };
+    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [] }; sel.clear(); selF = []; draw(); };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast; L = normLines(detectLines(img, p.crop)); L.fast = fast; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);
     const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
     bg.querySelector('#lNo').onclick = () => done(null);
-    bg.querySelector('#lOk').onclick = () => done({ ...packLines(L), sym: sym && !hasPartial(L) });
+    bg.querySelector('#lOk').onclick = () => done({ ...packLines(L), symP: sp && !hasPartial(L, 'post'), symS: ss });
     requestAnimationFrame(layout);
   });
 }
@@ -701,7 +805,7 @@ async function makeSketch(p, maxSide = 700) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', isSym(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -832,7 +936,7 @@ function renderAdr() {
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
         ${karmTxt(p) ? `<div class="muted">${karmTxt(p)}</div>` : ''}
-        ${[stafkTxt(p), symTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
+        ${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
         ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
@@ -908,10 +1012,10 @@ function formDialog(title, fields, ok) {
 
 const karmTxt = p => (p.kd || p.kt) ? 'Karm: ' + [p.kd ? 'dybde ' + fmtMM(p.kd) : '', p.kt ? 'tykkelse ' + fmtMM(p.kt) : ''].filter(Boolean).join(' × ') + ' mm' : '';
 
-const SIDER = [['venstre', 'Venstre'], ['hoejre', 'Højre'], ['top', 'Top'], ['rundt', 'Hele vejen rundt']];
+const SIDER = [['venstre', 'Venstre'], ['hoejre', 'Højre'], ['top', 'Top'], ['rundt', '3 sider']];
 const siderTxt = p => {
   const v = p.tilSider || [];
-  if (v.includes('rundt')) return 'hele vejen rundt';
+  if (v.includes('rundt')) return '3 sider';
   return SIDER.filter(([k]) => v.includes(k)).map(([, n]) => n.toLowerCase()).join(', ');
 };
 const harTil = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
@@ -931,6 +1035,7 @@ const sketchExtra = p => {
   if (karmTxt(p)) a.push(['#1b1f24', karmTxt(p)]);
   if (stafkTxt(p)) a.push(['#1b1f24', stafkTxt(p)]);
   if (symTxt(p)) a.push(['#1b1f24', symTxt(p)]);
+  if (fastTxt(p)) a.push(['#1b1f24', fastTxt(p)]);
   for (const f of farveTxt(p)) a.push(['#1b1f24', f]);
   if (tilTxt(p)) a.push(['#17694a', tilTxt(p)]);
   if (pladeTxt(p)) a.push(['#1b1f24', pladeTxt(p)]);
@@ -962,7 +1067,7 @@ function editPos(s, a, existing) {
   const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: allPos(s).reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, sym: true,
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, symP: true, symS: true,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
   };
@@ -1002,7 +1107,10 @@ function editPos(s, a, existing) {
     <div id="eSkWrap" style="margin-top:10px">
       <canvas class="sketch" id="eSketch"></canvas>
       <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
-      <div class="seg" id="eSym" style="margin-top:8px"><button type="button" data-s="1">Symmetrisk</button><button type="button" data-s="0">Asymmetrisk</button></div>
+      <div id="eSym" style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1"><div class="muted" style="font-size:13px;margin-bottom:3px">Poster</div><div class="seg" id="eSymP"><button type="button" data-s="1">Symm.</button><button type="button" data-s="0">Asymm.</button></div></div>
+        <div style="flex:1"><div class="muted" style="font-size:13px;margin-bottom:3px">Sprosser</div><div class="seg" id="eSymS"><button type="button" data-s="1">Symm.</button><button type="button" data-s="0">Asymm.</button></div></div>
+      </div>
       <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Tegn poster og sprosser</button>
       <div class="btns hidden" id="ePhotoBtns">
         <button class="btn sec small" id="eCrop">Markér vinduet</button>
@@ -1096,9 +1204,17 @@ function editPos(s, a, existing) {
   };
   bg.querySelector('#eToggle').onclick = () => { showPhoto = !showPhoto; updPhotoUI(); };
   bg.querySelector('#eRmPhoto').onclick = () => { p.fotoId = null; fu = null; p.crop = null; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); redraw(); };
-  const symBtns = bg.querySelectorAll('#eSym button');
-  const updSym = () => { bg.querySelector('#eSym').classList.toggle('hidden', p.type === 'glas'); symBtns.forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === isSym(p))); };
-  symBtns.forEach(b2 => b2.onclick = () => { p.sym = b2.dataset.s === '1'; updSym(); redraw(); });
+  const updSym = () => {
+    bg.querySelector('#eSym').classList.toggle('hidden', p.type === 'glas');
+    bg.querySelectorAll('#eSymP button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === symP(p)));
+    bg.querySelectorAll('#eSymS button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === symS(p)));
+  };
+  const setSym = (which, on) => {
+    const L = normLines(p.lines); p.symP = symP(p); p.symS = symS(p); delete p.sym; p[which] = on;
+    if (p.symP) symPosts(L); if (p.symS) symSpr(L); p.lines = packLines(L); updSym(); redraw();
+  };
+  bg.querySelectorAll('#eSymP button').forEach(b2 => b2.onclick = () => setSym('symP', b2.dataset.s === '1'));
+  bg.querySelectorAll('#eSymS button').forEach(b2 => b2.onclick = () => setSym('symS', b2.dataset.s === '1'));
   const visBtns = bg.querySelectorAll('#eVis button');
   const updVis = () => {
     bg.querySelector('#eVis').classList.toggle('hidden', !fu);
@@ -1109,7 +1225,7 @@ function editPos(s, a, existing) {
   bg.querySelector('#eLines').onclick = async () => {
     read();
     const L = await linesEditor(p, fu);
-    if (L) { p.sym = L.sym; delete L.sym; p.lines = L; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
+    if (L) { p.symP = L.symP; p.symS = L.symS; delete L.symP; delete L.symS; delete p.sym; p.lines = L; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
   };
   const autoLines = async () => {
     try { const L = detectLines(await photoImg(fu), p.crop); p.lines = L; p.visning = 'tegning';
@@ -1269,7 +1385,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${t.v} vinduer og ${t.g} glas på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }

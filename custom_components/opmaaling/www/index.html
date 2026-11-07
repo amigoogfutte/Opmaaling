@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.8';
+const APP_VERSION = '0.5.9';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -254,7 +254,10 @@ const flojeAntal = p => Math.min(8, Math.max(3, parseInt(p.dFloj, 10) || 3));
 // dFoldDel: 'en' (alle til én side) | 'midt' (delt på midten); dFoldSide: 'v' | 'h' = siden fløjene foldes mod
 function foldPlan(p) {
   const n = flojeAntal(p), side = p.dFoldSide === 'h' ? 'h' : 'v';
-  if (p.dFoldDel === 'midt') { const venstre = Math.ceil(n / 2); return { n, grupper: [{ fra: 0, til: venstre, mod: 'v' }, { fra: venstre, til: n, mod: 'h' }], dor: null }; }
+  if (p.dFoldDel === 'midt' && n % 2 === 0) {
+    // delt på midten: hver halvdel skal have et ulige antal fløje, så sidste fløj slutter frit i midten
+    const half = n / 2, venstre = half % 2 === 1 ? half : (side === 'v' ? half + 1 : half - 1);
+    return { n, grupper: [{ fra: 0, til: venstre, mod: 'v' }, { fra: venstre, til: n, mod: 'h' }], dor: null }; }
   if (n % 2 === 0) {   // lige antal: en dør i den ene side, resten foldes mod den anden
     return side === 'v' ? { n, grupper: [{ fra: 0, til: n - 1, mod: 'v' }], dor: { i: n - 1, hinge: 'h' } }
                         : { n, grupper: [{ fra: 1, til: n, mod: 'h' }], dor: { i: 0, hinge: 'v' } };
@@ -263,7 +266,7 @@ function foldPlan(p) {
 }
 const foldTxt = p => {
   const f = foldPlan(p), sideNavn = s2 => s2 === 'h' ? 'højre' : 'venstre';
-  if (p.dFoldDel === 'midt') return `delt på midten (${f.grupper[0].til - f.grupper[0].fra} fløje mod venstre, ${f.grupper[1].til - f.grupper[1].fra} mod højre)`;
+  if (p.dFoldDel === 'midt' && f.grupper.length === 2) { const fl = k2 => `${k2} ${k2 === 1 ? 'fløj' : 'fløje'}`; return `delt på midten (${fl(f.grupper[0].til - f.grupper[0].fra)} mod venstre, ${fl(f.grupper[1].til - f.grupper[1].fra)} mod højre)`; }
   const g = f.grupper[0], antal = g.til - g.fra;
   return f.dor ? `1 dør i ${sideNavn(f.dor.hinge)} side, ${antal} fløje foldes mod ${sideNavn(g.mod)}` : `alle fløje foldes mod ${sideNavn(g.mod)}`;
 };
@@ -1530,8 +1533,12 @@ function editPos(s, a, existing) {
     bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.k === k));
     vis('#eDHingeWrap', k === 'hoved' || k === 'terrasse'); vis('#eDRetnWrap', k !== 'skyde');
     vis('#eDSkydWrap', k === 'skyde'); vis('#eDFlojWrap', k === 'folde'); vis('#eDFoldWrap', k === 'folde');
-    bg.querySelector('#eDFoldSide').classList.toggle('hidden', p.dFoldDel === 'midt');
-    bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dFoldDel === 'midt' ? 'midt' : 'en')));
+    const nF = flojeAntal(p), kanDele = nF % 2 === 0, delt = kanDele && p.dFoldDel === 'midt', lige = delt && (nF / 2) % 2 === 1;
+    bg.querySelector('#eDFoldDel').classList.toggle('hidden', !kanDele);
+    bg.querySelector('#eDFoldSide').classList.toggle('hidden', lige);
+    const [bV, bH] = bg.querySelectorAll('#eDFoldSide button');
+    bV.textContent = delt ? 'Flest mod venstre' : 'Foldes mod venstre'; bH.textContent = delt ? 'Flest mod højre' : 'Foldes mod højre';
+    bg.querySelectorAll('#eDFoldDel button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (delt ? 'midt' : 'en')));
     bg.querySelectorAll('#eDFoldSide button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dFoldSide === 'h' ? 'h' : 'v'))); vis('#eDLaasWrap', k === 'hoved');
     bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dHinge || 'v')));
     bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dRetn || 'ind')));

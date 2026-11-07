@@ -76,6 +76,9 @@
   .check input { width: 26px; height: 26px; margin: 0; accent-color: var(--blue); }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
   .tag.raa { background: #ece8fb; color: #4c3a99; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 8px; }
+  .chip { border: 1px solid #cfd5dd; background: #fff; color: var(--text); border-radius: 99px; padding: 10px 16px; font-size: 16px; }
+  .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
   .raasel { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #cfd5dd; border-radius: 10px;
     padding: 8px 12px; margin-top: 8px; cursor: pointer; min-height: 56px; }
   .raasel img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: none; }
@@ -334,7 +337,7 @@ async function makeSketch(p, maxSide = 700) {
   if (!body) body = plainDrawing(p, Math.round(maxSide * 0.75));
   const u = Math.max(body.width, body.height) / 700; // skala for tekst
   const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
-  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (2.6 + 1.3 * ((p.raa ? 1 : 0) + (karmTxt(p) ? 1 : 0))));
+  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (2.6 + 1.3 * sketchExtra(p).length));
   const ctxMeasure = document.createElement('canvas').getContext('2d');
   ctxMeasure.font = `600 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
   const hTxt = `${fmtMM(p.h)} mm`;
@@ -364,6 +367,15 @@ async function makeSketch(p, maxSide = 700) {
     }
   };
   const L = padL, R = padL + body.width, T = padT, Bt = padT + body.height;
+  const sd = p.tilSider || [], all = sd.includes('rundt');
+  if (sd.length) {
+    const tw = Math.max(5, fs * 0.32); x.fillStyle = 'rgba(30,142,90,.85)';
+    if (all || sd.includes('venstre')) x.fillRect(L, T, tw, Bt - T);
+    if (all || sd.includes('hoejre')) x.fillRect(R - tw, T, tw, Bt - T);
+    if (all || sd.includes('top')) x.fillRect(L, T, R - L, tw);
+    if (all) x.fillRect(L, Bt - tw, R - L, tw);
+  }
+  x.fillStyle = col;
   const yb = Bt + fs * 0.9;
   x.setLineDash([4, 4]); x.lineWidth = 1.5;
   x.beginPath(); x.moveTo(L, Bt); x.lineTo(L, yb + fs * .3); x.moveTo(R, Bt); x.lineTo(R, yb + fs * .3);
@@ -377,17 +389,17 @@ async function makeSketch(p, maxSide = 700) {
   x.fillText(`B ${fmtMM(p.b)} mm`, (L + R) / 2, yb + fs * 0.35);
   x.textAlign = 'left'; x.textBaseline = 'middle';
   x.save(); x.fillText('H', xr + fs * 0.35, (T + Bt) / 2 - fs * 0.6); x.fillText(hTxt, xr + fs * 0.35, (T + Bt) / 2 + fs * 0.6); x.restore();
-  const extra = [];
-  if (karmTxt(p)) extra.push(['#1b1f24', karmTxt(p)]);
-  if (p.raa) extra.push(['#4c3a99', 'Råglas: ' + (p.raaType || 'type ikke valgt')]);
+  const extra = sketchExtra(p);
+  const maxW = W - padL * 2;
+  const fit = t => { if (x.measureText(t).width <= maxW) return t; while (t.length > 3 && x.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; };
   x.font = `600 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`;
   x.textAlign = 'left'; x.textBaseline = 'middle';
-  extra.reverse().forEach(([col, t], i) => { x.fillStyle = col; x.fillText(t, padL, H - fs * 0.75 - i * fs * 1.3); });
+  extra.reverse().forEach(([col, t], i) => { x.fillStyle = col; x.fillText(fit(t), padL, H - fs * 0.75 - i * fs * 1.3); });
   return c;
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, (p.tilSider || []).join(), p.tilNote, p.pladeNote, p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -441,6 +453,8 @@ async function renderSag() {
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
         ${karmTxt(p) ? `<div class="muted">${karmTxt(p)}</div>` : ''}
+        ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
+        ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
         ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
     ${s.pos.length ? `<div class="btns"><button class="btn sec" id="shareTxt">Del liste</button><button class="btn sec" id="copyTxt">Kopiér liste</button></div>` : ''}`;
@@ -477,6 +491,23 @@ async function sagMenu(s) {
 
 const karmTxt = p => (p.kd || p.kt) ? 'Karm: ' + [p.kd ? 'dybde ' + fmtMM(p.kd) : '', p.kt ? 'tykkelse ' + fmtMM(p.kt) : ''].filter(Boolean).join(' × ') + ' mm' : '';
 
+const SIDER = [['venstre', 'Venstre'], ['hoejre', 'Højre'], ['top', 'Top'], ['rundt', 'Hele vejen rundt']];
+const siderTxt = p => {
+  const v = p.tilSider || [];
+  if (v.includes('rundt')) return 'hele vejen rundt';
+  return SIDER.filter(([k]) => v.includes(k)).map(([, n]) => n.toLowerCase()).join(', ');
+};
+const tilTxt = p => ((p.tilSider && p.tilSider.length) || p.tilNote) ? 'Tilsætning: ' + [siderTxt(p), p.tilNote].filter(Boolean).join(' – ') : '';
+const pladeTxt = p => p.pladeNote ? 'Vindueplade: ' + p.pladeNote : '';
+const sketchExtra = p => {
+  const a = [];
+  if (karmTxt(p)) a.push(['#1b1f24', karmTxt(p)]);
+  if (tilTxt(p)) a.push(['#17694a', tilTxt(p)]);
+  if (pladeTxt(p)) a.push(['#1b1f24', pladeTxt(p)]);
+  if (p.raa) a.push(['#4c3a99', 'Råglas: ' + (p.raaType || 'type ikke valgt')]);
+  return a;
+};
+
 /* ============ Råglas-typer (Fynbo Glas ornamentliste) ============ */
 const RAAGLAS = [
   '4 mm Gross Artic', '4 mm Small Artic', '4 mm Gross Kathedral', '4 mm Klein Kathedral', '4 mm Ornament 520',
@@ -501,7 +532,7 @@ function editPos(s, existing) {
   const last = s.pos[s.pos.length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: s.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, ventil: false, raa: false, raaType: '', note: '', fotoId: null
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, ventil: false, raa: false, raaType: '', tilSider: [], tilNote: '', pladeNote: '', note: '', fotoId: null
   };
   const bg = document.createElement('div'); bg.className = 'sheet-bg';
   bg.innerHTML = `<div class="sheet">
@@ -543,8 +574,13 @@ function editPos(s, existing) {
       </div>
       <img id="ePhoto" class="sketch hidden" alt="">
     </div>
+    <label class="f">Tilsætninger – hvor?</label>
+    <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div>
+    <input type="text" id="eTilNote" value="${esc(p.tilNote || '')}" placeholder="Note til tilsætninger">
+    <label class="f">Vindueplade</label>
+    <input type="text" id="ePladeNote" value="${esc(p.pladeNote || '')}" placeholder="Note til vindueplade">
     <label class="f">Note</label>
-    <textarea id="eNote" placeholder="Fx åbner indad, skal have ventil …">${esc(p.note)}</textarea>
+    <textarea id="eNote" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
     <div class="btns" style="margin-top:14px"><button class="btn sec" id="eShareSk">Del skitse</button></div>
     ${isNew ? '' : `<button class="btn danger" id="eDel" style="margin-top:6px">Slet position</button>`}
     <button class="btn" id="eSave2" style="margin-top:10px">Gem</button>
@@ -569,6 +605,9 @@ function editPos(s, existing) {
     p.raa = bg.querySelector('#eRaa').checked;
     p.raaType = !p.raa ? '' : (raaSel === '__andet' ? bg.querySelector('#eRaaType').value.trim() : raaSel);
     p.note = bg.querySelector('#eNote').value.trim();
+    p.tilNote = bg.querySelector('#eTilNote').value.trim();
+    p.pladeNote = bg.querySelector('#ePladeNote').value.trim();
+    p.tilSider = [...bg.querySelectorAll('#eSider .chip.on')].map(c => c.dataset.side);
   };
   let drawToken = 0;
   async function redraw() {
@@ -654,6 +693,12 @@ function editPos(s, existing) {
     redraw();
   });
   updRaaSel();
+  bg.querySelectorAll('#eSider .chip').forEach(c => c.onclick = () => {
+    const k = c.dataset.side, chips = [...bg.querySelectorAll('#eSider .chip')];
+    if (k === 'rundt') { const on = !c.classList.contains('on'); chips.forEach(x => x.classList.toggle('on', on && x === c)); }
+    else { chips.find(x => x.dataset.side === 'rundt').classList.remove('on'); c.classList.toggle('on'); }
+    redraw();
+  });
   setType(p.type); updPhotoUI();
   if (isNew) setTimeout(() => bg.querySelector('#eRum').focus(), 300);
 }
@@ -730,7 +775,7 @@ function cropEditor(src, crop) {
 /* ============ Del / kopiér ============ */
 function listText(s) {
   const t = totals(s);
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${p.note ? ' (' + p.note + ')' : ''}`;
   const v = s.pos.filter(p => p.type !== 'glas'), g = s.pos.filter(p => p.type === 'glas');
   let out = `Opmåling: ${s.navn}\nDato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   const vent = list => list.filter(p => p.ventil).reduce((n, p) => n + (p.antal || 0), 0);

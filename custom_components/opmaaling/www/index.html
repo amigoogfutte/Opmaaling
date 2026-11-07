@@ -523,7 +523,6 @@ async function makeSketch(p, maxSide = 700) {
     if (all || sd.includes('venstre')) x.fillRect(L, T, tw, Bt - T);
     if (all || sd.includes('hoejre')) x.fillRect(R - tw, T, tw, Bt - T);
     if (all || sd.includes('top')) x.fillRect(L, T, R - L, tw);
-    if (all) x.fillRect(L, Bt - tw, R - L, tw);
   }
   x.fillStyle = col;
   const yb = Bt + fs * 0.9;

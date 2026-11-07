@@ -324,7 +324,7 @@ function edgeSketch(img, maxSide, crop) {
   x.putImageData(id, 0, 0);
   return c;
 }
-// Simpel tegning når der ikke er billede
+// Ren tegning af vinduet: karm, poster/sprosser og ruder – i forholdet bredde/højde
 function plainDrawing(p, maxSide) {
   const B = +p.b || 1000, H = +p.h || 1200;
   const r = Math.max(0.25, Math.min(4, H / B));
@@ -332,24 +332,158 @@ function plainDrawing(p, maxSide) {
   if (h > maxSide) { h = maxSide; w = Math.round(maxSide / r); }
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
+  const lw = Math.max(2, maxSide / 160);
+  const glas = p.type === 'glas';
+  const f = glas ? 0 : Math.max(6, Math.min(w, h) * 0.06);    // karmbredde
+  const t = Math.max(5, Math.min(w, h) * 0.035);                // post/sprosse
   x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
-  const lw = Math.max(2, maxSide / 110);
-  x.strokeStyle = '#2a3b55'; x.lineWidth = lw;
-  x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
-  if (p.type === 'glas') {
-    x.strokeStyle = '#7aa6d6'; x.lineWidth = lw * 0.7;
-    x.beginPath(); x.moveTo(w * .2, h * .35); x.lineTo(w * .45, h * .15); x.moveTo(w * .25, h * .55); x.lineTo(w * .6, h * .25); x.stroke();
-  } else {
-    const f = Math.max(6, Math.min(w, h) * 0.07);
-    x.strokeRect(f, f, w - 2 * f, h - 2 * f);
+  if (!glas) { x.fillStyle = '#e6ebf2'; x.fillRect(0, 0, w, h); }
+  const L = p.lines || { v: [], h: [] };
+  const cuts = (arr, len) => {
+    const out = [[f, null]];
+    for (const pos of [...arr].sort((a, b) => a - b)) { const m = pos * len; out[out.length - 1][1] = m - t / 2; out.push([m + t / 2, null]); }
+    out[out.length - 1][1] = len - f; return out.filter(([a, b]) => b - a > 2);
+  };
+  const xs = cuts(L.v || [], w), ys = cuts(L.h || [], h);
+  x.lineWidth = lw; x.strokeStyle = '#2a3b55';
+  for (const [x0, x1] of xs) for (const [y0, y1] of ys) {
+    x.fillStyle = p.raa ? '#eef0f4' : '#f4f9ff'; x.fillRect(x0, y0, x1 - x0, y1 - y0);
+    x.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    // lille glans-markering i hver rude
+    x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.6; x.beginPath();
+    const gw = x1 - x0, gh = y1 - y0;
+    x.moveTo(x0 + gw * .18, y0 + gh * .32); x.lineTo(x0 + gw * .38, y0 + gh * .14);
+    x.moveTo(x0 + gw * .22, y0 + gh * .46); x.lineTo(x0 + gw * .52, y0 + gh * .2); x.stroke(); x.restore();
   }
+  x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
   return c;
+}
+
+// Find lodrette og vandrette poster/sprosser i fotoet (inden for den markerede ramme)
+function detectLines(img, crop) {
+  const cr = crop || { x: 0, y: 0, w: 1, h: 1 };
+  const sx = cr.x * img.naturalWidth, sy = cr.y * img.naturalHeight, sw = cr.w * img.naturalWidth, sh = cr.h * img.naturalHeight;
+  const sc = Math.min(1, 360 / Math.max(sw, sh));
+  const w = Math.max(20, Math.round(sw * sc)), h = Math.max(20, Math.round(sh * sc));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data, n = w * h, g = new Float32Array(n), b = new Float32Array(n);
+  for (let i = 0; i < n; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
+    let s = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += g[(y + dy) * w + xx + dx]; b[y * w + xx] = s / 9;
+  }
+  const col = new Float32Array(w), row = new Float32Array(h);
+  for (let y = 2; y < h - 2; y++) for (let xx = 2; xx < w - 2; xx++) {
+    const i = y * w + xx;
+    const gx = -b[i - w - 1] - 2 * b[i - 1] - b[i + w - 1] + b[i - w + 1] + 2 * b[i + 1] + b[i + w + 1];
+    const gy = -b[i - w - 1] - 2 * b[i - w] - b[i - w + 1] + b[i + w - 1] + 2 * b[i + w] + b[i + w + 1];
+    const ax = Math.abs(gx), ay = Math.abs(gy);
+    if (ax > ay * 1.3) col[xx] += ax; else if (ay > ax * 1.3) row[y] += ay;
+  }
+  const peaks = (arr, len, span) => {
+    const a = arr.map(v => v / span), sm = new Float32Array(len);
+    for (let i = 2; i < len - 2; i++) sm[i] = (a[i - 2] + a[i - 1] + a[i] + a[i + 1] + a[i + 2]) / 5;
+    const m0 = Math.round(len * 0.08), m1 = len - m0, vals = [];
+    for (let i = m0; i < m1; i++) vals.push(sm[i]);
+    if (!vals.length) return [];
+    const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
+    const max = Math.max(...vals), thr = Math.max(mean + 2.2 * sd, max * 0.45);
+    const raw = [];
+    for (let i = m0; i < m1; i++) if (sm[i] >= thr && sm[i] >= sm[i - 1] && sm[i] >= sm[i + 1]) raw.push(i);
+    // en post har to kanter tæt på hinanden – læg dem sammen
+    const groups = [];
+    for (const i of raw) { const gr = groups[groups.length - 1]; if (gr && i - gr[gr.length - 1] <= len * 0.07) gr.push(i); else groups.push([i]); }
+    return groups.map(gr => (gr[0] + gr[gr.length - 1]) / 2 / len)
+      .map(v => Math.round(v * 1000) / 1000).slice(0, 4);
+  };
+  return { v: peaks(col, w, h), h: peaks(row, h, w) };
+}
+
+// Skærm til at rette tegningens poster/sprosser med fingeren
+function linesEditor(p, fu) {
+  return new Promise(async resolve => {
+    let L = { v: [...((p.lines || {}).v || [])], h: [...((p.lines || {}).h || [])] };
+    let img = null; if (fu) { try { img = await photoImg(fu); } catch (e) { img = null; } }
+    const bg = document.createElement('div'); bg.className = 'dialog-bg'; bg.style.alignItems = 'stretch'; bg.style.padding = '0';
+    bg.innerHTML = `<div style="background:#111;color:#fff;width:100%;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))">
+      <div style="text-align:center;font-weight:600;margin-bottom:4px">Tegning af vinduet</div>
+      <div style="text-align:center;font-size:14px;color:#bbb;margin-bottom:10px">Træk i de gule linjer, så de ligger på poster og sprosser. Tryk på en linje for at vælge den.</div>
+      <div id="lWrap" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0">
+        <div id="lBox" style="position:relative;touch-action:none;user-select:none;-webkit-user-select:none"><canvas id="lCv" style="display:block"></canvas></div>
+      </div>
+      <div class="btns" style="margin-top:10px"><button class="btn sec small" id="lAddV">+ Lodret</button><button class="btn sec small" id="lAddH">+ Vandret</button><button class="btn danger small" id="lDel">Fjern valgt</button></div>
+      <div class="btns"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Ingen linjer</button></div>
+      <div class="btns"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
+    </div>`;
+    document.body.appendChild(bg);
+    const box = bg.querySelector('#lBox'), cv = bg.querySelector('#lCv'), wrap = bg.querySelector('#lWrap');
+    let W = 0, H = 0, sel = null;
+    const aspect = () => {
+      if (img) { const cr = p.crop || { w: 1, h: 1 }; return (cr.h * img.naturalHeight) / (cr.w * img.naturalWidth); }
+      return (+p.h || 1200) / (+p.b || 1000);
+    };
+    function layout() {
+      const r = aspect(); const mw = wrap.clientWidth, mh = wrap.clientHeight;
+      W = Math.min(mw, mh / r); H = W * r;
+      cv.width = Math.round(W * 2); cv.height = Math.round(H * 2); cv.style.width = W + 'px'; cv.style.height = H + 'px';
+      const x = cv.getContext('2d');
+      if (img) { const cr = p.crop || { x: 0, y: 0, w: 1, h: 1 };
+        x.drawImage(img, cr.x * img.naturalWidth, cr.y * img.naturalHeight, cr.w * img.naturalWidth, cr.h * img.naturalHeight, 0, 0, cv.width, cv.height); }
+      else { x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); }
+      draw();
+    }
+    function draw() {
+      box.querySelectorAll('.ln').forEach(e => e.remove());
+      for (const k of ['v', 'h']) L[k].forEach((pos, i) => {
+        const el = document.createElement('div'); el.className = 'ln'; el.dataset.k = k; el.dataset.i = i;
+        const on = sel && sel.k === k && sel.i === i, col = on ? '#ff4d4d' : '#ffcc00';
+        el.style.cssText = k === 'v'
+          ? `position:absolute;top:0;height:100%;width:36px;left:${pos * W - 18}px;display:flex;justify-content:center;touch-action:none`
+          : `position:absolute;left:0;width:100%;height:36px;top:${pos * H - 18}px;display:flex;align-items:center;touch-action:none`;
+        el.innerHTML = `<div style="background:${col};${k === 'v' ? 'width:4px;height:100%' : 'height:4px;width:100%'};box-shadow:0 0 3px #000"></div>`;
+        box.appendChild(el);
+      });
+      bg.querySelector('#lDel').disabled = !sel;
+    }
+    let drag = null;
+    box.addEventListener('pointerdown', e => {
+      const el = e.target.closest('.ln'); if (!el) { sel = null; draw(); return; }
+      sel = { k: el.dataset.k, i: +el.dataset.i }; drag = sel; box.setPointerCapture(e.pointerId); e.preventDefault(); draw();
+    });
+    box.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const r = box.getBoundingClientRect();
+      const v = drag.k === 'v' ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height;
+      L[drag.k][drag.i] = Math.round(Math.min(0.97, Math.max(0.03, v)) * 1000) / 1000; draw();
+    });
+    const end = () => { drag = null; };
+    box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+    const addLine = k => {
+      const pts = [0, ...L[k].slice().sort((a, b) => a - b), 1]; let best = 0.5, gap = 0;
+      for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > gap) { gap = pts[i + 1] - pts[i]; best = (pts[i] + pts[i + 1]) / 2; }
+      L[k].push(Math.round(best * 1000) / 1000); sel = { k, i: L[k].length - 1 }; draw();
+    };
+    bg.querySelector('#lAddV').onclick = () => addLine('v');
+    bg.querySelector('#lAddH').onclick = () => addLine('h');
+    bg.querySelector('#lDel').onclick = () => { if (sel) { L[sel.k].splice(sel.i, 1); sel = null; draw(); } };
+    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [] }; sel = null; draw(); };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { L = detectLines(img, p.crop); sel = null; draw(); toast(`Fandt ${L.v.length + L.h.length} linjer`); } };
+    window.addEventListener('resize', layout);
+    const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
+    bg.querySelector('#lNo').onclick = () => done(null);
+    bg.querySelector('#lOk').onclick = () => done({ v: L.v.slice().sort((a, b) => a - b), h: L.h.slice().sort((a, b) => a - b) });
+    requestAnimationFrame(layout);
+  });
 }
 // Samler billede/tegning med målpile og tekst
 async function makeSketch(p, maxSide = 700) {
   let body = null;
   const fu = p.fotoId ? await fotoURL(p.fotoId) : null;
-  if (fu) { try { body = edgeSketch(await photoImg(fu), maxSide, p.crop); } catch (e) { body = null; } }
+  // Foto-skitse kun når det er valgt (eller for ældre positioner uden tegning)
+  const fotoMode = fu && (p.visning === 'foto' || (!p.visning && !p.lines));
+  if (fotoMode) { try { body = edgeSketch(await photoImg(fu), maxSide, p.crop); } catch (e) { body = null; } }
   if (!body) body = plainDrawing(p, Math.round(maxSide * 0.75));
   const u = Math.max(body.width, body.height) / 700; // skala for tekst
   const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
@@ -415,7 +549,7 @@ async function makeSketch(p, maxSide = 700) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -692,6 +826,8 @@ function editPos(s, a, existing) {
     </div>
     <div id="eSkWrap" style="margin-top:10px">
       <canvas class="sketch" id="eSketch"></canvas>
+      <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
+      <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Ret tegning (poster og sprosser)</button>
       <div class="btns hidden" id="ePhotoBtns">
         <button class="btn sec small" id="eCrop">Markér vinduet</button>
         <button class="btn sec small" id="eToggle">Vis foto</button>
@@ -776,14 +912,32 @@ function editPos(s, a, existing) {
   if (p.fotoId) fotoURL(p.fotoId).then(u => { fu = u; updPhotoUI(); redraw(); });
   const updPhotoUI = () => {
     photoBtns.classList.toggle('hidden', !fu);
+    if (typeof updVis === 'function') updVis();
     photoEl.classList.toggle('hidden', !showPhoto || !fu);
     sketchEl.classList.toggle('hidden', showPhoto && !!fu);
     bg.querySelector('#eToggle').textContent = showPhoto ? 'Vis skitse' : 'Vis foto';
     if (fu) photoEl.src = fu;
   };
   bg.querySelector('#eToggle').onclick = () => { showPhoto = !showPhoto; updPhotoUI(); };
-  bg.querySelector('#eRmPhoto').onclick = () => { p.fotoId = null; fu = null; p.crop = null; showPhoto = false; updPhotoUI(); redraw(); };
-  const doCrop = async () => { const c = await cropEditor(fu, p.crop); if (c) { p.crop = c; showPhoto = false; updPhotoUI(); redraw(); } };
+  bg.querySelector('#eRmPhoto').onclick = () => { p.fotoId = null; fu = null; p.crop = null; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); redraw(); };
+  const visBtns = bg.querySelectorAll('#eVis button');
+  const updVis = () => {
+    bg.querySelector('#eVis').classList.toggle('hidden', !fu);
+    const mode = fu && (p.visning === 'foto' || (!p.visning && !p.lines)) ? 'foto' : 'tegning';
+    visBtns.forEach(b2 => b2.classList.toggle('on', b2.dataset.v === mode));
+  };
+  visBtns.forEach(b2 => b2.onclick = () => { p.visning = b2.dataset.v; showPhoto = false; updPhotoUI(); updVis(); redraw(); });
+  bg.querySelector('#eLines').onclick = async () => {
+    read();
+    const L = await linesEditor(p, fu);
+    if (L) { p.lines = L; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); updVis(); redraw(); }
+  };
+  const autoLines = async () => {
+    try { const L = detectLines(await photoImg(fu), p.crop); p.lines = L; p.visning = 'tegning';
+      toast(L.v.length + L.h.length ? `Fandt ${L.v.length + L.h.length} linjer` : 'Ingen poster fundet');
+    } catch (e) { /* ignorer */ }
+  };
+  const doCrop = async () => { const c = await cropEditor(fu, p.crop); if (c) { p.crop = c; await autoLines(); showPhoto = false; updPhotoUI(); updVis(); redraw(); } };
   bg.querySelector('#eCrop').onclick = doCrop;
   const onFile = async e => {
     const f = e.target.files && e.target.files[0]; e.target.value = '';

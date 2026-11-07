@@ -369,7 +369,7 @@ async function makeSketch(p, maxSide = 700) {
     }
   };
   const L = padL, R = padL + body.width, T = padT, Bt = padT + body.height;
-  const sd = p.tilSider || [], all = sd.includes('rundt');
+  const sd = harTil(p) ? (p.tilSider || []) : [], all = sd.includes('rundt');
   if (sd.length) {
     const tw = Math.max(5, fs * 0.32); x.fillStyle = 'rgba(30,142,90,.85)';
     if (all || sd.includes('venstre')) x.fillRect(L, T, tw, Bt - T);
@@ -401,7 +401,7 @@ async function makeSketch(p, maxSide = 700) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, (p.tilSider || []).join(), p.tilNote, p.pladeNote, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -500,8 +500,10 @@ const siderTxt = p => {
   if (v.includes('rundt')) return 'hele vejen rundt';
   return SIDER.filter(([k]) => v.includes(k)).map(([, n]) => n.toLowerCase()).join(', ');
 };
-const tilTxt = p => ((p.tilSider && p.tilSider.length) || p.tilNote) ? 'Tilsætning: ' + [siderTxt(p), p.tilNote].filter(Boolean).join(' – ') : '';
-const pladeTxt = p => p.pladeNote ? 'Vindueplade: ' + p.pladeNote : '';
+const harTil = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
+const harPlade = p => p.plade !== undefined ? !!p.plade : !!p.pladeNote;
+const tilTxt = p => harTil(p) ? 'Tilsætning' + (siderTxt(p) ? ': ' + siderTxt(p) : '') : '';
+const pladeTxt = p => harPlade(p) ? 'Vindueplade' : '';
 const farveDel = (navn, k, r, ens) => {
   if (!k && !r) return '';
   if (ens || !r || k === r) return `Farve ${navn}: ${k || r}`;
@@ -543,7 +545,7 @@ function editPos(s, existing) {
   const last = s.pos[s.pos.length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: s.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, ventil: false, raa: false, raaType: '', tilSider: [], tilNote: '', pladeNote: '',
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
   };
@@ -604,11 +606,10 @@ function editPos(s, existing) {
     </div>
     <label class="check small"><input type="checkbox" id="eFiEns" ${p.fiEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
     <datalist id="farveList">${[...new Set([...liveSager().flatMap(x => x.pos.flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))].map(f => `<option value="${esc(f)}">`).join('')}</datalist>
-    <label class="f">Tilsætninger – hvor?</label>
-    <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div>
-    <input type="text" id="eTilNote" value="${esc(p.tilNote || '')}" placeholder="Note til tilsætninger">
-    <label class="f">Vindueplade</label>
-    <input type="text" id="ePladeNote" value="${esc(p.pladeNote || '')}" placeholder="Note til vindueplade">
+    <label class="check"><input type="checkbox" id="eTil" ${harTil(p) ? 'checked' : ''}> Tilsætning</label>
+    <div id="eTilWrap" class="${harTil(p) ? '' : 'hidden'}"><label class="f">Hvor?</label>
+    <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div></div>
+    <label class="check"><input type="checkbox" id="ePlade" ${harPlade(p) ? 'checked' : ''}> Vindueplade</label>
     <label class="f">Note</label>
     <textarea id="eNote" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
     <div class="btns" style="margin-top:14px"><button class="btn sec" id="eShareSk">Del skitse</button></div>
@@ -635,15 +636,16 @@ function editPos(s, existing) {
     p.raa = bg.querySelector('#eRaa').checked;
     p.raaType = !p.raa ? '' : (raaSel === '__andet' ? bg.querySelector('#eRaaType').value.trim() : raaSel);
     p.note = bg.querySelector('#eNote').value.trim();
-    p.tilNote = bg.querySelector('#eTilNote').value.trim();
-    p.pladeNote = bg.querySelector('#ePladeNote').value.trim();
+    p.til = bg.querySelector('#eTil').checked;
+    p.plade = bg.querySelector('#ePlade').checked;
+    delete p.tilNote; delete p.pladeNote;
     for (const k of ['fu', 'fi']) {
       const P = k[0].toUpperCase() + k[1];
       p[k + 'Ens'] = bg.querySelector(`#e${P}Ens`).checked;
       p[k + 'K'] = bg.querySelector(`#e${P}K`).value.trim();
       p[k + 'R'] = p[k + 'Ens'] ? '' : bg.querySelector(`#e${P}R`).value.trim();
     }
-    p.tilSider = [...bg.querySelectorAll('#eSider .chip.on')].map(c => c.dataset.side);
+    p.tilSider = p.til ? [...bg.querySelectorAll('#eSider .chip.on')].map(c => c.dataset.side) : [];
   };
   let drawToken = 0;
   async function redraw() {
@@ -729,6 +731,7 @@ function editPos(s, existing) {
     redraw();
   });
   updRaaSel();
+  bg.querySelector('#eTil').addEventListener('change', e => { bg.querySelector('#eTilWrap').classList.toggle('hidden', !e.target.checked); redraw(); });
   for (const P of ['Fu', 'Fi']) bg.querySelector(`#e${P}Ens`).addEventListener('change', e => {
     const ens = e.target.checked;
     bg.querySelector(`#e${P}RWrap`).classList.toggle('hidden', ens);

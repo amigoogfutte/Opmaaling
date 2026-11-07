@@ -131,7 +131,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.3.6';
+const APP_VERSION = '0.3.7';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1108,10 +1108,6 @@ function editPos(s, a, existing) {
     <div id="eSkWrap" style="margin-top:10px">
       <canvas class="sketch" id="eSketch"></canvas>
       <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
-      <div id="eSym" style="display:flex;gap:8px;margin-top:8px">
-        <div style="flex:1"><div class="muted" style="font-size:13px;margin-bottom:3px">Poster</div><div class="seg" id="eSymP"><button type="button" data-s="1">Symm.</button><button type="button" data-s="0">Asymm.</button></div></div>
-        <div style="flex:1"><div class="muted" style="font-size:13px;margin-bottom:3px">Sprosser</div><div class="seg" id="eSymS"><button type="button" data-s="1">Symm.</button><button type="button" data-s="0">Asymm.</button></div></div>
-      </div>
       <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Tegn poster og sprosser</button>
       <div class="btns hidden" id="ePhotoBtns">
         <button class="btn sec small" id="eCrop">Markér vinduet</button>
@@ -1206,6 +1202,7 @@ function editPos(s, a, existing) {
   bg.querySelector('#eToggle').onclick = () => { showPhoto = !showPhoto; updPhotoUI(); };
   bg.querySelector('#eRmPhoto').onclick = () => { p.fotoId = null; fu = null; p.crop = null; p.visning = 'tegning'; showPhoto = false; updPhotoUI(); redraw(); };
   const updSym = () => {
+    if (!bg.querySelector('#eSym')) return; // valget findes kun i tegneskærmen
     bg.querySelector('#eSym').classList.toggle('hidden', p.type === 'glas');
     bg.querySelectorAll('#eSymP button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === symP(p)));
     bg.querySelectorAll('#eSymS button').forEach(b2 => b2.classList.toggle('on', (b2.dataset.s === '1') === symS(p)));

@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.7';
+const APP_VERSION = '0.4.8';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -349,12 +349,12 @@ const AABNING = { side: 'Sidehængt', top: 'Tophængt', topstyret: 'Topstyret', 
 const openTxt = o => !o ? '' : o.type === 'side'
   ? `Sidehængt (hængsel ${o.hinge === 'h' ? 'højre' : 'venstre'}${o.brems ? ', med bremse' : ''})` : (AABNING[o.type] || '');
 // Beskrivelse af rammerne: hver ramme med nummer og betegnelse (fast eller åbningsmåde)
-const harRammeInfo = p => { if (p.type === 'glas' || p.type === 'dor') return false; const L = normLines(p.lines); return (L.open || []).length > 0 || (L.fast || []).length > 0; };
+const harRammeInfo = p => p.type !== 'glas' && p.type !== 'dor';
 const aabningLines = p => {
   if (!harRammeInfo(p)) return [];
   const L = normLines(p.lines), frs = fracFields(L);
   return frs.map((fr, i) => {
-    const o = openAt(L, fr), t = isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : '';
+    const o = openAt(L, fr), t = isFast(L, fr) ? 'Fast (uden ramme)' : o ? openTxt(o) : 'Fast ramme';   // intet valgt = fast ramme
     return t ? (frs.length > 1 ? `Ramme ${i + 1}: ` : 'Åbning: ') + t : '';
   }).filter(Boolean);
 };
@@ -497,7 +497,7 @@ function plainDrawing(p, maxSide) {
   }
 
   if (dor) { x.fillStyle = '#8f99a6'; x.fillRect(0, h - fb, w, fb); }   // bundstykke
-  const visNr = !glas && !dor && ((L.open || []).length > 0 || (L.fast || []).length > 0) && fields.length > 1;
+  const visNr = !glas && !dor && fields.length > 1;
   for (const [fi, { fr, px: [x0, x1, y0, y1] }] of fields.entries()) {
     if (x1 - x0 < 4 || y1 - y0 < 4) continue;
     const fast = !glas && isFast(L, fr);

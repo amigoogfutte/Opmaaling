@@ -40,6 +40,8 @@
   .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
     background: #e6eef8; color: var(--blue-d); }
   .tag.glas { background: #e5f5ee; color: #17694a; }
+  .tag.dor { background: #f6ecdc; color: #7a4f12; }
+  .summary .card b { font-size: 24px; }
   .summary { display: flex; gap: 10px; margin-bottom: 10px; }
   .summary .card { flex: 1; text-align: center; margin: 0; }
   .summary b { display: block; font-size: 26px; color: var(--blue); }
@@ -131,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -237,10 +239,13 @@ async function migrateFotos(list) {
 
 const sag = () => data.sager.find(s => s.id === view.sagId && !s.deleted);
 const totalsP = list => {
-  let v = 0, g = 0;
-  for (const p of list) (p.type === 'glas' ? (g += p.antal || 0) : (v += p.antal || 0));
-  return { v, g };
+  let v = 0, g = 0, d = 0;
+  for (const p of list) { const n = p.antal || 0; if (p.type === 'glas') g += n; else if (p.type === 'dor') d += n; else v += n; }
+  return { v, g, d };
 };
+const TYPENAVN = { vindue: 'Vindue', glas: 'Glas', dor: 'Dør' };
+const typeNavn = p => TYPENAVN[p.type] || 'Vindue';
+const dorTxt = p => p.type !== 'dor' ? '' : [`Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', p.dGlas ? 'med glas' : 'uden glas'].join(', ');
 const totals = s => totalsP(allPos(s));
 const fmtMM = n => (n || n === 0) && n !== '' ? String(Math.round(Number(n))) : '–';
 
@@ -455,7 +460,7 @@ function plainDrawing(p, maxSide) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
   const m = Math.min(w, h), lw = Math.max(1.5, maxSide / 200);
-  const glas = p.type === 'glas';
+  const glas = p.type === 'glas', dor = p.type === 'dor';
   const L = applyMM(normLines(p.lines), p.b, p.h);
   if (glas) { L.v.forEach(l => l.t = 'sprosse'); L.h.forEach(l => l.t = 'sprosse'); }
   const sP = symP(p) && !hasPartial(L, 'post') && ![...L.v, ...L.h].some(l => l.mm && l.t === 'post'), sS = symS(p) && ![...L.v, ...L.h].some(l => l.mm && l.t === 'sprosse');
@@ -464,6 +469,7 @@ function plainDrawing(p, maxSide) {
   const rw = glas ? 0 : Math.max(5, m * 0.045);      // ramme
   const ts = Math.max(3, m * 0.018);                  // sprosse
   const gap = glas ? 0 : Math.max(1.5, m * 0.007);   // luft mellem karm/post og ramme
+  const fb = dor ? Math.max(3, f * 0.35) : f;          // dør: lavt bundstykke i stedet for karm forneden
   const KARM = '#dfe5ee', RAMME = '#f7f8fa', GLAS = p.raa ? '#e9ecf1' : '#eef6ff', LINE = '#2a3b55';
   x.fillStyle = glas ? '#fff' : KARM; x.fillRect(0, 0, w, h);
   x.lineWidth = lw; x.strokeStyle = LINE;
@@ -474,27 +480,52 @@ function plainDrawing(p, maxSide) {
   if (sP) {
     // lige store felter mellem karm og poster
     const nv = L.v.filter(l => l.t === 'post').length, nh = L.h.filter(l => l.t === 'post').length;
-    const cuts = (n, len) => { const cs = even(f, len - f, n, tp), out = [[f, null]];
-      for (const mm of cs) { out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); } out[out.length - 1][1] = len - f; return out; };
+    const cuts = (n, len, fe = f) => { const cs = even(f, len - fe, n, tp), out = [[f, null]];
+      for (const mm of cs) { out[out.length - 1][1] = mm - tp / 2; out.push([mm + tp / 2, null]); } out[out.length - 1][1] = len - fe; return out; };
     const edges = (k) => [0, ...L[k].filter(l => l.t === 'post').map(l => l.p).sort((a, b) => a - b), 1];
-    const ev = edges('v'), eh = edges('h'), xs = cuts(nv, w), ys = cuts(nh, h);
+    const ev = edges('v'), eh = edges('h'), xs = cuts(nv, w), ys = cuts(nh, h, fb);
     xs.forEach(([x0, x1], i) => ys.forEach(([y0, y1], j) => fields.push({ fr: [ev[i], ev[i + 1], eh[j], eh[j + 1]], px: [x0, x1, y0, y1] })));
     fields.sort((a2, b2) => a2.fr[2] - b2.fr[2] || a2.fr[0] - b2.fr[0]);   // samme nummerering som i teksten: række for række
   } else {
     for (const fr of fracFields(L)) fields.push({ fr, px: [
       fr[0] < 0.001 ? f : fr[0] * w + tp / 2, fr[1] > 0.999 ? w - f : fr[1] * w - tp / 2,
-      fr[2] < 0.001 ? f : fr[2] * h + tp / 2, fr[3] > 0.999 ? h - f : fr[3] * h - tp / 2] });
+      fr[2] < 0.001 ? f : fr[2] * h + tp / 2, fr[3] > 0.999 ? h - fb : fr[3] * h - tp / 2] });
   }
 
-  const visNr = !glas && (L.open || []).length > 0 && fields.length > 1;
+  if (dor) { x.fillStyle = '#8f99a6'; x.fillRect(0, h - fb, w, fb); }   // bundstykke
+  const visNr = !glas && !dor && (L.open || []).length > 0 && fields.length > 1;
   for (const [fi, { fr, px: [x0, x1, y0, y1] }] of fields.entries()) {
     if (x1 - x0 < 4 || y1 - y0 < 4) continue;
     const fast = !glas && isFast(L, fr);
     const rx0 = x0 + gap, ry0 = y0 + gap, rx1 = x1 - gap, ry1 = y1 - gap;
     if (!glas && !fast) { x.fillStyle = RAMME; x.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0); x.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); }
-    const ins = fast ? rw * 0.3 : rw;   // fast felt: glasset sidder direkte i karmen (kun en glasliste)
+    const leaf = dor && !fast;                 // dørblad
+    const ins = fast ? rw * 0.3 : leaf ? rw * 1.6 : rw;   // fast felt: glasset sidder direkte i karmen (kun en glasliste)
     const gx0 = rx0 + ins, gy0 = ry0 + ins, gx1 = rx1 - ins, gy1 = ry1 - ins;
     if (gx1 - gx0 < 4 || gy1 - gy0 < 4) continue;
+    if (leaf) {
+      // dørblad: håndtag og åbningssymbol (spidsen mod hængslerne)
+      const drawLeaf = () => {
+        const hv = p.dHinge === 'h', hx = hv ? rx1 : rx0, ox = hv ? rx0 : rx1, my2 = (ry0 + ry1) / 2;
+        x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.1; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
+        x.beginPath(); x.moveTo(ox, ry0); x.lineTo(hx, my2); x.lineTo(ox, ry1); x.stroke(); x.restore();
+        const gxH = hv ? rx0 + rw * 0.8 : rx1 - rw * 0.8, gyH = ry0 + (ry1 - ry0) * 0.52;
+        x.save(); x.fillStyle = '#4b5563'; x.fillRect(gxH - lw * 1.5, gyH - lw * 1.5, lw * 3, lw * 3);
+        x.fillRect(hv ? gxH : gxH - rw * 0.9, gyH - lw, rw * 0.9, lw * 2); x.restore();
+        x.save(); x.fillStyle = '#c0392b'; x.font = `700 ${Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.07)}px -apple-system, Helvetica, Arial, sans-serif`;
+        x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText(p.dRetn === 'ud' ? 'UDAD' : 'INDAD', (rx0 + rx1) / 2, ry1 - 3); x.restore();
+      };
+      if (!p.dGlas) {
+        // massivt dørblad med fyldning
+        x.fillStyle = '#f3efe8'; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+        const ip = Math.min(gx1 - gx0, gy1 - gy0) * 0.12;
+        x.save(); x.strokeStyle = '#b8b0a2'; x.strokeRect(gx0 + ip, gy0 + ip, gx1 - gx0 - 2 * ip, (gy1 - gy0) * 0.45 - ip);
+        x.strokeRect(gx0 + ip, gy0 + (gy1 - gy0) * 0.55, gx1 - gx0 - 2 * ip, (gy1 - gy0) * 0.45 - ip); x.restore();
+        drawLeaf(); continue;
+      }
+      setTimeout(() => {}, 0);
+      x._drawLeafAfter = drawLeaf;
+    }
     x.fillStyle = GLAS; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
     x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.8; x.beginPath();
     const gw = gx1 - gx0, gh = gy1 - gy0;
@@ -522,6 +553,7 @@ function plainDrawing(p, maxSide) {
       else { if (s.c <= gy0 + ts || s.c >= gy1 - ts) continue; const a = Math.max(gx0, s.s), b = Math.min(gx1, s.e); if (b - a < 3) continue;
         x.fillRect(a, s.c - ts / 2, b - a, ts); x.strokeRect(a, s.c - ts / 2, b - a, ts); }
     }
+    if (leaf && x._drawLeafAfter) { x._drawLeafAfter(); x._drawLeafAfter = null; continue; }
     // åbningssymbol: stiplede linjer med spidsen mod hængslerne
     const o = !glas && !fast ? openAt(L, fr) : null;
     if (o || visNr) {
@@ -878,7 +910,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
   x.fillStyle = '#1b1f24'; x.font = `700 ${fs}px -apple-system, Helvetica, Arial, sans-serif`; x.textBaseline = 'middle';
   const t = `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`;
   x.fillText(t, fs * 0.8, fs * 1.1);
-  const typeTxt = `${p.type === 'glas' ? 'Glas' : 'Vindue'}${p.ventil ? ' · ventil' : ''}${p.raa ? ' · råglas' : ''} · ${p.antal || 1} stk`;
+  const typeTxt = `${typeNavn(p)}${p.ventil ? ' · ventil' : ''}${p.raa ? ' · råglas' : ''} · ${p.antal || 1} stk`;
   x.font = `500 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`; x.fillStyle = '#6b7280';
   x.textAlign = 'right'; x.fillText(typeTxt, W - fs * 0.5, fs * 1.1); x.textAlign = 'left';
   // målpile
@@ -948,7 +980,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 2].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -973,7 +1005,7 @@ function sagCard(s) {
     <div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n} adresse${n === 1 ? '' : 'r'}${adrNavne.length ? ': ' + esc(adrNavne.join(', ')) : ''}</div>
     <div class="muted">${s.arkiveret ? 'Arkiveret ' + fmtDato(s.arkiveretDato) : 'Oprettet ' + fmtDato(s.oprettet)}</div></div>
     <div style="text-align:right;flex:none"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
-    <div><b>${t.g}</b> <span class="muted">glas</span></div></div></div>`;
+    <div><b>${t.g}</b> <span class="muted">glas</span></div>${t.d ? `<div><b>${t.d}</b> <span class="muted">${t.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`;
 }
 const matchSag = (s, q) => !q || [s.nr, s.navn, ...(s.adresser || []).map(a => a.adresse)].join(' ').toLowerCase().includes(q.toLowerCase());
 function sagListe(list, emptyHTML, from) {
@@ -1035,13 +1067,13 @@ function renderSag() {
       <div class="title" style="font-size:19px">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted">${esc(s.navn)}</div>` : ''}</div>
       <button class="btn sec small" id="retSag" style="width:auto;padding:10px 16px">✏️ Ret</button></div>` + `
     <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
-    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div></div>
+    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div><div class="card"><b>${t.d}</b><span class="muted">døre i alt</span></div></div>
     ${adrs.length ? '' : `<div class="empty">Ingen adresser endnu.<br>Tryk på <b>Tilføj adresse</b>.</div>`}
     ${adrs.map(a => { const ta = totalsP(a.pos); return `
       <div class="card clickable row" data-a="${a.id}">
         <div class="grow"><div class="title">${esc(a.adresse)}</div><div class="muted">${a.pos.length} pos.</div></div>
         <div style="text-align:right;flex:none"><div><b>${ta.v}</b> <span class="muted">vinduer</span></div>
-        <div><b>${ta.g}</b> <span class="muted">glas</span></div></div></div>`; }).join('')}
+        <div><b>${ta.g}</b> <span class="muted">glas</span></div>${ta.d ? `<div><b>${ta.d}</b> <span class="muted">${ta.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`; }).join('')}
     ${allPos(s).length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del hele sagen som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}
     ${s.arkiveret ? '' : `<button class="btn sec" id="arkiver" style="margin-top:16px">Arkivér sag</button>`}`;
   $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
@@ -1067,17 +1099,18 @@ function renderAdr() {
   $('#more').onclick = () => adrMenu(s, a);
   $('#main').innerHTML = syncBarHTML() + `
     <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
-    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div></div>
+    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div><div class="card"><b>${t.d}</b><span class="muted">døre i alt</span></div></div>
     ${a.pos.length ? '' : `<div class="empty">Ingen positioner endnu.<br>Tryk på <b>Tilføj vindue/glas</b>.</div>`}
     <div id="posList">${a.pos.map(p => `
       <div class="card clickable row" data-p="${p.id}">
         <img class="thumb" data-thumb="${p.id}" alt="">
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
-        <div><span class="tag ${p.type === 'glas' ? 'glas' : ''}">${p.type === 'glas' ? 'Glas' : 'Vindue'}</span>
+        <div><span class="tag ${p.type === 'glas' ? 'glas' : p.type === 'dor' ? 'dor' : ''}">${typeNavn(p)}</span>
         ${p.ventil ? '<span class="tag ventil">Ventil</span>' : ''}
         ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(p.raaType) : ''}</span>` : ''}
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
+        ${dorTxt(p) ? `<div class="muted">${dorTxt(p)}</div>` : ''}
         ${karmTxt(p) ? `<div class="muted">${karmTxt(p)}</div>` : ''}
         ${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
         ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
@@ -1217,7 +1250,14 @@ function editPos(s, a, existing) {
   const bg = document.createElement('div'); bg.className = 'sheet-bg';
   bg.innerHTML = `<div class="sheet">
     <div class="sheet-top"><button id="eCancel">Annuller</button><h2>${isNew ? 'Ny position' : 'Pos. ' + p.nr}</h2><button class="save" id="eSave">Gem</button></div>
-    <div class="seg" id="eType"><button data-t="vindue">Vindue</button><button data-t="glas">Glas</button></div>
+    <div class="seg" id="eType"><button data-t="vindue">Vindue</button><button data-t="glas">Glas</button><button data-t="dor">Dør</button></div>
+    <div id="eDorOpts" class="hidden">
+      <div class="two" style="margin-top:8px">
+        <div class="seg" id="eDHinge"><button type="button" data-v="v">Hængsel venstre</button><button type="button" data-v="h">Hængsel højre</button></div>
+      </div>
+      <div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div>
+      <label class="check"><input type="checkbox" id="eDGlas" ${p.dGlas ? 'checked' : ''}> Med glas i dørbladet</label>
+    </div>
     <div class="two">
       <div><label class="f">Pos. nr.</label><input inputmode="numeric" id="eNr" value="${esc(p.nr)}"></div>
       <div style="flex:2.2"><label class="f">Rum / placering</label><input type="text" id="eRum" value="${esc(p.rum)}" placeholder="Fx Stue, mod syd" list="rumList"></div>
@@ -1290,7 +1330,19 @@ function editPos(s, a, existing) {
   const close = () => { bg.remove(); document.body.style.overflow = ''; $('#fileCam').onchange = null; $('#fileLib').onchange = null; };
 
   const segBtns = bg.querySelectorAll('#eType button');
-  const setType = t => { p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t)); if (typeof updSym === 'function') updSym(); redraw(); };
+  const updDor = () => {
+    bg.querySelector('#eDorOpts').classList.toggle('hidden', p.type !== 'dor');
+    bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dHinge || 'v')));
+    bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dRetn || 'ind')));
+  };
+  bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.onclick = () => { p.dHinge = b2.dataset.v; updDor(); redraw(); });
+  bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.onclick = () => { p.dRetn = b2.dataset.v; updDor(); redraw(); });
+  bg.querySelector('#eDGlas').addEventListener('change', e => { p.dGlas = e.target.checked; redraw(); });
+  const setType = t => {
+    p.type = t; segBtns.forEach(b => b.classList.toggle('on', b.dataset.t === t));
+    if (t === 'dor') { p.dHinge = p.dHinge || 'v'; p.dRetn = p.dRetn || 'ind'; }
+    updDor(); if (typeof updSym === 'function') updSym(); redraw();
+  };
   segBtns.forEach(b => b.onclick = () => setType(b.dataset.t));
 
   const read = () => {
@@ -1525,18 +1577,19 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
-  if (!only) { const t = totals(s); out += `Hele sagen: ${t.v} vinduer og ${t.g} glas på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
+  if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
   const vent = list => list.filter(p => p.ventil).reduce((n, p) => n + (p.antal || 0), 0);
   const raa = list => list.filter(p => p.raa).reduce((n, p) => n + (p.antal || 0), 0);
   const ventTxt = list => { const a = []; if (vent(list)) a.push(`${vent(list)} med ventil`); if (raa(list)) a.push(`${raa(list)} med råglas`); return a.length ? ` (heraf ${a.join(', ')})` : ''; };
   for (const a of adrs) {
-    const v = a.pos.filter(p => p.type !== 'glas'), g = a.pos.filter(p => p.type === 'glas'), t = totalsP(a.pos);
+    const v = a.pos.filter(p => p.type !== 'glas' && p.type !== 'dor'), g = a.pos.filter(p => p.type === 'glas'), d = a.pos.filter(p => p.type === 'dor'), t = totalsP(a.pos);
     if (!only) out += `\n===== ${a.adresse} =====\n`;
     if (v.length) out += `\nVINDUER – i alt ${t.v} stk${ventTxt(v)}\n` + v.map(line).join('\n') + '\n';
     if (g.length) out += `\nGLAS – i alt ${t.g} stk${ventTxt(g)}\n` + g.map(line).join('\n') + '\n';
+    if (d.length) out += `\nDØRE – i alt ${t.d} stk${ventTxt(d)}\n` + d.map(line).join('\n') + '\n';
   }
   return out;
 }
@@ -1565,7 +1618,8 @@ function loadJsPDF() {
 // Oplysninger om en position som linjer til PDF'en
 function posLines(p) {
   return [
-    `${p.type === 'glas' ? 'Glas' : 'Vindue'} · ${p.antal || 1} stk`,
+    `${typeNavn(p)} · ${p.antal || 1} stk`,
+    dorTxt(p),
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
     karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p),
     p.ventil ? 'Med ventil' : '',
@@ -1574,7 +1628,7 @@ function posLines(p) {
     p.note ? 'Note: ' + p.note : ''
   ].filter(Boolean);
 }
-const antalTxt = t => `${t.v} ${t.v === 1 ? 'vindue' : 'vinduer'} og ${t.g} glas`;
+const antalTxt = t => [`${t.v} ${t.v === 1 ? 'vindue' : 'vinduer'}`, `${t.g} glas`, t.d ? `${t.d} ${t.d === 1 ? 'dør' : 'døre'}` : ''].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' og $1');
 async function makePDF(s, only) {
   const { jsPDF } = await loadJsPDF();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });

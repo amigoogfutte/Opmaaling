@@ -76,6 +76,13 @@
   .check input { width: 26px; height: 26px; margin: 0; accent-color: var(--blue); }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
   .tag.raa { background: #ece8fb; color: #4c3a99; }
+  .raagrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .raatile { background: #fff; border: 2px solid #dfe3e8; border-radius: 12px; padding: 5px; text-align: center; cursor: pointer;
+    font-size: 12.5px; line-height: 1.2; color: var(--text); display: flex; flex-direction: column; gap: 4px; }
+  .raatile.on { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(31,95,168,.25); background: #eef4fb; font-weight: 600; }
+  .raatile .ph { aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: repeating-linear-gradient(45deg, #e9eef4 0 6px, #f6f8fb 6px 12px);
+    display: flex; align-items: center; justify-content: center; color: #9aa4b2; font-size: 22px; }
+  .raatile .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; height: 50px; }
   .sketch { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; display: block; }
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
@@ -321,7 +328,7 @@ async function makeSketch(p, maxSide = 700) {
   if (!body) body = plainDrawing(p, Math.round(maxSide * 0.75));
   const u = Math.max(body.width, body.height) / 700; // skala for tekst
   const fs = Math.round(Math.max(13, 30 * Math.max(u, 0.55)));
-  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * 2.6);
+  const padL = Math.round(fs * 0.8), padT = Math.round(fs * 2.2), padB = Math.round(fs * (p.raa ? 3.9 : 2.6));
   const ctxMeasure = document.createElement('canvas').getContext('2d');
   ctxMeasure.font = `600 ${fs}px -apple-system, Helvetica, Arial, sans-serif`;
   const hTxt = `${fmtMM(p.h)} mm`;
@@ -364,6 +371,11 @@ async function makeSketch(p, maxSide = 700) {
   x.fillText(`B ${fmtMM(p.b)} mm`, (L + R) / 2, yb + fs * 0.35);
   x.textAlign = 'left'; x.textBaseline = 'middle';
   x.save(); x.fillText('H', xr + fs * 0.35, (T + Bt) / 2 - fs * 0.6); x.fillText(hTxt, xr + fs * 0.35, (T + Bt) / 2 + fs * 0.6); x.restore();
+  if (p.raa) {
+    x.fillStyle = '#4c3a99'; x.font = `600 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`;
+    x.textAlign = 'left'; x.textBaseline = 'middle';
+    x.fillText('Råglas: ' + (p.raaType || 'type ikke valgt'), padL, H - fs * 0.75);
+  }
   return c;
 }
 const thumbCache = new Map();
@@ -455,6 +467,22 @@ async function sagMenu(s) {
   };
 }
 
+/* ============ Råglas-typer (Fynbo Glas ornamentliste) ============ */
+const RAAGLAS = [
+  '4 mm Gross Artic', '4 mm Small Artic', '4 mm Gross Kathedral', '4 mm Klein Kathedral', '4 mm Ornament 520',
+  '4 mm Chincilla', '4 mm Ornament 504', '4 mm Pacific', '4 mm Silvit', '4 mm Cotswold', '4 mm Barroch',
+  '4 mm Ornament 597', '4 mm Abstrach', '6 mm Spejtråd', '7 mm Treclar Tråd', '7 mm Georgian Tråd',
+  '4 mm Satimat', '6 mm Antelio Silver', '6 mm Antelio Klar', '4 mm Grå Parsol'
+];
+const raaSlug = n => n.toLowerCase().replace(/æ/g, 'ae').replace(/ø/g, 'oe').replace(/å/g, 'aa').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const raaImg = n => `raaglas/${raaSlug(n)}.jpg`;
+function raaTiles(selected) {
+  const known = RAAGLAS.includes(selected);
+  return RAAGLAS.map(n => `<div class="raatile ${n === selected ? 'on' : ''}" data-raa="${esc(n)}">
+      <div class="ph"><img src="${raaImg(n)}" alt="" loading="lazy" onerror="this.remove()"></div>${esc(n)}</div>`).join('') +
+    `<div class="raatile ${selected && !known ? 'on' : ''}" data-raa="__andet"><div class="ph">✎</div>Anden type</div>`;
+}
+
 /* ============ Redigér position ============ */
 function parseMM(v) { const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n > 0 ? Math.round(n) : ''; }
 
@@ -482,8 +510,10 @@ function editPos(s, existing) {
     <div class="stepper"><button id="eMinus" type="button">−</button><input inputmode="numeric" id="eAnt" value="${esc(p.antal)}"><button id="ePlus" type="button">+</button></div>
     <label class="check"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
     <label class="check"><input type="checkbox" id="eRaa" ${p.raa ? 'checked' : ''}> Råglas</label>
-    <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}"><label class="f">Type råglas</label>
-      <input type="text" id="eRaaType" value="${esc(p.raaType || '')}" placeholder="Fx Master-Carré, Kathedral …"></div>
+    <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}"><label class="f">Vælg type råglas</label>
+      <div class="raagrid" id="eRaaGrid">${raaTiles(p.raaType)}</div>
+      <div id="eRaaOther" class="${p.raaType && !RAAGLAS.includes(p.raaType) ? '' : 'hidden'}"><label class="f">Anden type</label>
+      <input type="text" id="eRaaType" value="${esc(p.raaType && !RAAGLAS.includes(p.raaType) ? p.raaType : '')}" placeholder="Skriv typen"></div></div>
     <label class="f">Billede</label>
     <div class="photo-btns">
       <label class="btn sec small" for="fileCam">📷 Tag billede</label>
@@ -520,7 +550,7 @@ function editPos(s, existing) {
     p.antal = Math.max(1, parseInt(bg.querySelector('#eAnt').value, 10) || 1);
     p.ventil = bg.querySelector('#eVentil').checked;
     p.raa = bg.querySelector('#eRaa').checked;
-    p.raaType = p.raa ? bg.querySelector('#eRaaType').value.trim() : '';
+    p.raaType = !p.raa ? '' : (raaSel === '__andet' ? bg.querySelector('#eRaaType').value.trim() : raaSel);
     p.note = bg.querySelector('#eNote').value.trim();
   };
   let drawToken = 0;
@@ -538,6 +568,7 @@ function editPos(s, existing) {
 
   const photoBtns = bg.querySelector('#ePhotoBtns'), photoEl = bg.querySelector('#ePhoto'), sketchEl = bg.querySelector('#eSketch');
   let showPhoto = false, fu = null;
+  let raaSel = p.raaType ? (RAAGLAS.includes(p.raaType) ? p.raaType : '__andet') : '';
   if (p.fotoId) fotoURL(p.fotoId).then(u => { fu = u; updPhotoUI(); redraw(); });
   const updPhotoUI = () => {
     photoBtns.classList.toggle('hidden', !fu);
@@ -578,7 +609,15 @@ function editPos(s, existing) {
 
   bg.querySelector('#eRaa').addEventListener('change', e => {
     bg.querySelector('#eRaaWrap').classList.toggle('hidden', !e.target.checked);
-    if (e.target.checked) setTimeout(() => bg.querySelector('#eRaaType').focus(), 50);
+    redraw();
+  });
+  bg.querySelectorAll('#eRaaGrid .raatile').forEach(t => t.onclick = () => {
+    raaSel = t.dataset.raa;
+    bg.querySelectorAll('#eRaaGrid .raatile').forEach(x => x.classList.toggle('on', x === t));
+    const other = raaSel === '__andet';
+    bg.querySelector('#eRaaOther').classList.toggle('hidden', !other);
+    if (other) setTimeout(() => bg.querySelector('#eRaaType').focus(), 50);
+    redraw();
   });
   setType(p.type); updPhotoUI();
   if (isNew) setTimeout(() => bg.querySelector('#eRum').focus(), 300);

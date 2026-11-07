@@ -134,7 +134,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.2';
+const APP_VERSION = '0.5.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1230,7 +1230,7 @@ const siderTxt = p => {
   return SIDER.filter(([k]) => v.includes(k)).map(([, n]) => n.toLowerCase()).join(', ');
 };
 const harTil = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
-const harPlade = p => p.plade !== undefined ? !!p.plade : !!p.pladeNote;
+const harPlade = p => p.type !== 'dor' && (p.plade !== undefined ? !!p.plade : !!p.pladeNote);   // døre har ingen vindueplade
 const tilTxt = p => harTil(p) ? 'Tilsætning' + (siderTxt(p) ? ': ' + siderTxt(p) : '') : '';
 const stafkTxt = p => p.stafk === 'med' ? 'Med stafkehling' : p.stafk === 'uden' ? 'Uden stafkehling' : '';
 const pladeTxt = p => harPlade(p) ? 'Vindueplade' : '';
@@ -1314,7 +1314,7 @@ function editPos(s, a, existing) {
     <label class="check"><input type="checkbox" id="eTil" ${harTil(p) ? 'checked' : ''}> Tilsætning</label>
     <div id="eTilWrap" class="${harTil(p) ? '' : 'hidden'}"><label class="f">Hvor?</label>
     <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div></div>
-    <label class="check"><input type="checkbox" id="ePlade" ${harPlade(p) ? 'checked' : ''}> Vindueplade</label>
+    <label class="check" id="ePladeRow"><input type="checkbox" id="ePlade" ${harPlade(p) ? 'checked' : ''}> Vindueplade</label>
     <label class="check"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
     <label class="check"><input type="checkbox" id="eRaa" ${p.raa ? 'checked' : ''}> Råglas</label>
     <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}">
@@ -1367,6 +1367,7 @@ function editPos(s, a, existing) {
 
   const segBtns = bg.querySelectorAll('#eType button');
   const updDor = () => {
+    bg.querySelector('#ePladeRow').classList.toggle('hidden', p.type === 'dor');
     bg.querySelector('#eDorOpts').classList.toggle('hidden', p.type !== 'dor');
     bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dHinge || 'v')));
     bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (p.dRetn || 'ind')));

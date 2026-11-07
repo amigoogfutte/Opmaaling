@@ -75,6 +75,7 @@
     padding: 12px 14px; margin-top: 12px; font-size: 18px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .check input { width: 26px; height: 26px; margin: 0; accent-color: var(--blue); }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
+  .tag.raa { background: #ece8fb; color: #4c3a99; }
   .stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; height: 50px; }
   .sketch { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; display: block; }
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
@@ -334,7 +335,7 @@ async function makeSketch(p, maxSide = 700) {
   x.fillStyle = '#1b1f24'; x.font = `700 ${fs}px -apple-system, Helvetica, Arial, sans-serif`; x.textBaseline = 'middle';
   const t = `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`;
   x.fillText(t, padL, padT / 2);
-  const typeTxt = `${p.type === 'glas' ? 'Glas' : 'Vindue'}${p.ventil ? ' · ventil' : ''} · ${p.antal || 1} stk`;
+  const typeTxt = `${p.type === 'glas' ? 'Glas' : 'Vindue'}${p.ventil ? ' · ventil' : ''}${p.raa ? ' · råglas' : ''} · ${p.antal || 1} stk`;
   x.font = `500 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`; x.fillStyle = '#6b7280';
   x.textAlign = 'right'; x.fillText(typeTxt, W - fs * 0.5, padT / 2); x.textAlign = 'left';
   // målpile
@@ -367,7 +368,7 @@ async function makeSketch(p, maxSide = 700) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.ventil ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 260);
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -417,6 +418,7 @@ async function renderSag() {
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
         <div><span class="tag ${p.type === 'glas' ? 'glas' : ''}">${p.type === 'glas' ? 'Glas' : 'Vindue'}</span>
         ${p.ventil ? '<span class="tag ventil">Ventil</span>' : ''}
+        ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(p.raaType) : ''}</span>` : ''}
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
         ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
@@ -461,7 +463,7 @@ function editPos(s, existing) {
   const last = s.pos[s.pos.length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: s.pos.reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', antal: 1, ventil: false, note: '', fotoId: null
+    rum: '', type: last ? last.type : 'vindue', b: '', h: '', antal: 1, ventil: false, raa: false, raaType: '', note: '', fotoId: null
   };
   const bg = document.createElement('div'); bg.className = 'sheet-bg';
   bg.innerHTML = `<div class="sheet">
@@ -479,6 +481,9 @@ function editPos(s, existing) {
     <label class="f">Antal ens</label>
     <div class="stepper"><button id="eMinus" type="button">−</button><input inputmode="numeric" id="eAnt" value="${esc(p.antal)}"><button id="ePlus" type="button">+</button></div>
     <label class="check"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
+    <label class="check"><input type="checkbox" id="eRaa" ${p.raa ? 'checked' : ''}> Råglas</label>
+    <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}"><label class="f">Type råglas</label>
+      <input type="text" id="eRaaType" value="${esc(p.raaType || '')}" placeholder="Fx Master-Carré, Kathedral …"></div>
     <label class="f">Billede</label>
     <div class="photo-btns">
       <label class="btn sec small" for="fileCam">📷 Tag billede</label>
@@ -514,6 +519,8 @@ function editPos(s, existing) {
     p.h = parseMM(bg.querySelector('#eH').value);
     p.antal = Math.max(1, parseInt(bg.querySelector('#eAnt').value, 10) || 1);
     p.ventil = bg.querySelector('#eVentil').checked;
+    p.raa = bg.querySelector('#eRaa').checked;
+    p.raaType = p.raa ? bg.querySelector('#eRaaType').value.trim() : '';
     p.note = bg.querySelector('#eNote').value.trim();
   };
   let drawToken = 0;
@@ -569,6 +576,10 @@ function editPos(s, existing) {
   };
   bg.querySelector('#eShareSk').onclick = async () => { read(); shareSketch(s, p); };
 
+  bg.querySelector('#eRaa').addEventListener('change', e => {
+    bg.querySelector('#eRaaWrap').classList.toggle('hidden', !e.target.checked);
+    if (e.target.checked) setTimeout(() => bg.querySelector('#eRaaType').focus(), 50);
+  });
   setType(p.type); updPhotoUI();
   if (isNew) setTimeout(() => bg.querySelector('#eRum').focus(), 300);
 }
@@ -645,11 +656,12 @@ function cropEditor(src, crop) {
 /* ============ Del / kopiér ============ */
 function listText(s) {
   const t = totals(s);
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.ventil ? ', MED VENTIL' : ''}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${p.note ? ' (' + p.note + ')' : ''}`;
   const v = s.pos.filter(p => p.type !== 'glas'), g = s.pos.filter(p => p.type === 'glas');
   let out = `Opmåling: ${s.navn}\nDato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   const vent = list => list.filter(p => p.ventil).reduce((n, p) => n + (p.antal || 0), 0);
-  const ventTxt = list => vent(list) ? ` (heraf ${vent(list)} med ventil)` : '';
+  const raa = list => list.filter(p => p.raa).reduce((n, p) => n + (p.antal || 0), 0);
+  const ventTxt = list => { const a = []; if (vent(list)) a.push(`${vent(list)} med ventil`); if (raa(list)) a.push(`${raa(list)} med råglas`); return a.length ? ` (heraf ${a.join(', ')})` : ''; };
   if (v.length) out += `\nVINDUER – i alt ${t.v} stk${ventTxt(v)}\n` + v.map(line).join('\n') + '\n';
   if (g.length) out += `\nGLAS – i alt ${t.g} stk${ventTxt(g)}\n` + g.map(line).join('\n') + '\n';
   return out;

@@ -35,8 +35,9 @@
   .title { font-weight: 600; }
   .clickable { cursor: pointer; }
   .clickable:active { background: #eef3fa; }
-  .thumb { width: 78px; height: 78px; object-fit: contain; border-radius: 8px; background: #fff;
-    border: 1px solid var(--line); flex: none; }
+  .thumb { width: 132px; height: 132px; object-fit: contain; border-radius: 8px; background: #fff;
+    border: 1px solid var(--line); flex: none; align-self: flex-start; }
+  @media (min-width: 600px) { .thumb { width: 180px; height: 180px; } }
   .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
     background: #e6eef8; color: var(--blue-d); }
   .tag.glas { background: #e5f5ee; color: #17694a; }
@@ -133,7 +134,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.1';
+const APP_VERSION = '0.5.2';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1015,7 +1016,7 @@ const thumbCache = new Map();
 async function thumbURL(p) {
   const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
-  const c = await makeSketch(p, 260);
+  const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
 }
 

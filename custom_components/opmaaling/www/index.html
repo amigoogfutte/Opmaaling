@@ -133,7 +133,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.5.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1356,7 +1356,7 @@ function editPos(s, a, existing) {
     </div>
     <label class="f">Note</label>
     <textarea id="eNote" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
-    <div class="btns" style="margin-top:14px"><button class="btn sec" id="eShareSk">Del skitse</button></div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="eShareSk">📄 Del skitse som PDF</button></div>
     ${isNew ? '' : `<button class="btn danger" id="eDel" style="margin-top:6px">Slet position</button>`}
     <button class="btn" id="eSave2" style="margin-top:10px">Gem</button>
   </div>`;
@@ -1487,7 +1487,10 @@ function editPos(s, a, existing) {
       a.pos = a.pos.filter(q => q.id !== p.id); touch(s); save(); close(); render();
     }
   };
-  bg.querySelector('#eShareSk').onclick = async () => { read(); shareSketch(s, p, a); };
+  bg.querySelector('#eShareSk').onclick = async () => {
+    read(); if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
+    sharePDF(s, { id: a.id, adresse: a.adresse, pos: [p] }, `Pos-${p.nr}`);
+  };
 
   bg.querySelector('#eRaa').addEventListener('change', e => {
     bg.querySelector('#eRaaWrap').classList.toggle('hidden', !e.target.checked);
@@ -1668,7 +1671,7 @@ const antalTxt = t => {
   const dele = [t.v ? `${t.v} ${t.v === 1 ? 'vindue' : 'vinduer'}` : '', t.g ? `${t.g} glas` : '', t.d ? `${t.d} ${t.d === 1 ? 'dør' : 'døre'}` : ''].filter(Boolean);
   return dele.length ? dele.join(', ').replace(/, ([^,]*)$/, ' og $1') : 'ingen positioner';
 };
-async function makePDF(s, only) {
+async function makePDF(s, only, navn) {
   const { jsPDF } = await loadJsPDF();
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210, PH = 297, M = 15, BOT = PH - 16;
@@ -1717,13 +1720,13 @@ async function makePDF(s, only) {
   for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 128, 140);
     doc.text(`${sagLabel(s)}${only ? ' · ' + only.adresse : ''}`, M, PH - 8); doc.text(`Side ${i} af ${n}`, PW - M, PH - 8, { align: 'right' }); }
   const safe = v => String(v || '').replace(/[^\wæøåÆØÅ-]+/g, '-').replace(/^-+|-+$/g, '');
-  const name = `Opmaaling-${safe(sagLabel(s).replace(/^Sag /, 'Sag-'))}${only ? '-' + safe(only.adresse) : ''}.pdf`;
+  const name = `Opmaaling-${safe(sagLabel(s).replace(/^Sag /, 'Sag-'))}${only ? '-' + safe(only.adresse) : ''}${navn ? '-' + safe(navn) : ''}.pdf`;
   return new File([doc.output('blob')], name, { type: 'application/pdf' });
 }
-async function sharePDF(s, only) {
+async function sharePDF(s, only, navn) {
   toast('Laver PDF …');
   let file;
-  try { file = await makePDF(s, only); }
+  try { file = await makePDF(s, only, navn); }
   catch (e) { toast('PDF kunne ikke laves – prøv igen med internet'); return; }
   const title = `${sagLabel(s)}${only ? ' – ' + only.adresse : ''}`;
   const kanDele = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));

@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.6.1';
+const APP_VERSION = '0.6.2';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -292,11 +292,11 @@ function dorLeaves(p, L, frs) {
 const dorTxt = p => {
   if (p.type !== 'dor') return '';
   const k = dKind(p), L = normLines(p.lines), flere = fracFields(L).length > 1;
-  if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
-  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, foldTxt(p), p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', p.dGlas !== false ? 'med glas' : 'uden glas'].join(', ');
+  if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, dFyldTxt(p)].join(', ');
+  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, foldTxt(p), p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', dFyldTxt(p)].join(', ');
   const laas = [p.dLaas ? 'lås' : '', p.dSuppl ? 'suppleringslås' : ''].filter(Boolean);
   return [flere ? '' : `Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad',
-    p.dGlas ? 'med glas' : 'uden glas', laas.length ? 'med ' + laas.join(' og ') : ''].filter(Boolean).join(', ');
+    dFyldTxt(p), laas.length ? 'med ' + laas.join(' og ') : ''].filter(Boolean).join(', ');
 };
 const totals = s => totalsP(allPos(s));
 const fmtMM = n => (n || n === 0) && n !== '' ? String(Math.round(Number(n))) : '–';
@@ -390,7 +390,30 @@ function normLines(L) {
   const fast = (L && Array.isArray(L.fast) ? L.fast : []).filter(q => Array.isArray(q) && q.length === 2).map(([a, b]) => [+a, +b]);
   const open = (L && Array.isArray(L.open) ? L.open : []).filter(o => o && Array.isArray(o.pt))
     .map(o => ({ pt: [+o.pt[0], +o.pt[1]], type: o.type, hinge: o.hinge === 'h' ? 'h' : 'v', brems: !!o.brems, d180: !!o.d180 }));
-  return { v: f(L && L.v), h: f(L && L.h), fast, open };
+  const fyld = (L && Array.isArray(L.fyld) ? L.fyld : []).filter(o => o && Array.isArray(o.pt) && FYLD[o.t]).map(o => ({ pt: [+o.pt[0], +o.pt[1]], t: o.t }));
+  return { v: f(L && L.v), h: f(L && L.h), fast, open, fyld };
+}
+// Fyldninger: glas (standard), friseret fyldning, glat plade eller plade med spor
+const FYLD = { glas: 'Glas', friseret: 'Friseret fyldning', glat: 'Glat pladefyldning', spor: 'Pladefyldning med spor' };
+const fyldAt = (L, fr) => { const o = (L.fyld || []).find(o2 => inFr(fr, o2.pt)); return o ? o.t : null; };
+// dørens fyldning (gælder alle dørblade/fløje), ældre data: dGlas
+const dFyldOf = p => FYLD[p.dFyld] ? p.dFyld : ((dKind(p) === 'hoved' ? !!p.dGlas : p.dGlas !== false) ? 'glas' : 'friseret');
+const dFyldTxt = p => ({ glas: 'med glas', friseret: 'friseret fyldning', glat: 'glat pladefyldning', spor: 'pladefyldning med spor' })[dFyldOf(p)];
+// tegn en fyldning i et rektangel
+function tegnFyld(x, t, a, b, c, d, lw) {
+  const gw = b - a, gh = d - c, m = Math.min(gw, gh);
+  x.save(); x.fillStyle = '#efe6d6'; x.fillRect(a, c, gw, gh); x.strokeRect(a, c, gw, gh);
+  x.strokeStyle = '#a8987c'; x.lineWidth = Math.max(1, lw * 0.7);
+  if (t === 'friseret') {
+    const ip = m * 0.16; x.beginPath();
+    x.rect(a + ip, c + ip, gw - 2 * ip, gh - 2 * ip);
+    x.moveTo(a, c); x.lineTo(a + ip, c + ip); x.moveTo(b, c); x.lineTo(b - ip, c + ip);
+    x.moveTo(a, d); x.lineTo(a + ip, d - ip); x.moveTo(b, d); x.lineTo(b - ip, d - ip); x.stroke();
+  } else if (t === 'spor') {
+    const k = Math.max(2, Math.round(gw / Math.max(8, Math.max(gw, gh) * 0.07)));
+    x.beginPath(); for (let i = 1; i <= k; i++) { const xx = a + gw * i / (k + 1); x.moveTo(xx, c + 2); x.lineTo(xx, d - 2); } x.stroke();
+  }
+  x.restore();
 }
 // Faste felter (uden ramme) gemmes som et punkt inde i feltet
 const inFr = (fr, [fx, fy]) => fx >= fr[0] && fx <= fr[1] && fy >= fr[2] && fy <= fr[3];
@@ -415,6 +438,15 @@ const aabningLines = p => {
   const nr = a2 => a2.length > 1 ? a2.slice(0, -1).join(', ') + ' og ' + a2[a2.length - 1] : String(a2[0]);
   return [...grp].map(([t, a2]) => `${dl ? 'Felt' : 'Ramme'} ${nr(a2)}: ${t}`);
 };
+// fyldninger valgt i tegningen: "Ramme 2 og 4: Friseret fyldning"
+const fyldLines = p => {
+  if (p.type === 'glas') return [];
+  const L = normLines(p.lines); if (!L.fyld.length) return [];
+  const frs = fracFields(L), grp = new Map(), ord = p.type === 'dor' ? 'Felt' : 'Ramme';
+  frs.forEach((fr, i) => { const t = fyldAt(L, fr); if (t && t !== 'glas') { if (!grp.has(t)) grp.set(t, []); grp.get(t).push(i + 1); } });
+  const nr = a2 => a2.length > 1 ? a2.slice(0, -1).join(', ') + ' og ' + a2[a2.length - 1] : String(a2[0]);
+  return [...grp].map(([t, a2]) => frs.length === 1 ? FYLD[t] : `${ord} ${nr(a2)}: ${FYLD[t]}`);
+};
 const fastCount = p => { if (p.type === 'glas') return 0; const L = normLines(p.lines); return fracFields(L).filter(fr => isFast(L, fr)).length; };
 const fastTxt = p => { if (aabningLines(p).length) return ''; const n = fastCount(p); return n ? (n === 1 ? '1 fast felt (uden ramme)' : `${n} faste felter (uden ramme)`) : ''; };
 const isPartial = l => l.a > 0.001 || l.b < 0.999;
@@ -425,6 +457,7 @@ const packLines = L => {
   const pk = arr => arr.slice().sort((x, y) => x.p - y.p || x.a - y.a).map(l => ({
     p: r3(l.p), t: l.t, ...(isPartial(l) ? { a: r3(l.a), b: r3(l.b) } : {}), ...(l.mm ? { mm: l.mm, fra: l.fra || 'start' } : {}) }));
   const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]);
+  if (L.fyld && L.fyld.length) out.fyld = L.fyld.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], t: o.t }));
   if (L.open && L.open.length) out.open = L.open.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], type: o.type, hinge: o.hinge, brems: o.brems || undefined }));
   return out;
 };
@@ -558,8 +591,9 @@ function plainDrawing(p, maxSide) {
   // panel med ramme og glas (eller massivt), bruges til skyde- og foldedøre
   const panel = (a, b2, c2, d) => {
     x.fillStyle = RAMME; x.fillRect(a, c2, b2 - a, d - c2); x.strokeRect(a, c2, b2 - a, d - c2);
-    const i2 = rw * 1.2; x.fillStyle = p.dGlas !== false ? GLAS : '#f3efe8';
-    x.fillRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2); x.strokeRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2);
+    const i2 = rw * 1.2, df = dFyldOf(p);
+    if (df !== 'glas') { tegnFyld(x, df, a + i2, b2 - i2, c2 + i2, d - i2, lw); return; }
+    x.fillStyle = GLAS; x.fillRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2); x.strokeRect(a + i2, c2 + i2, b2 - a - 2 * i2, d - c2 - 2 * i2);
   };
   if (dk === 'skyde' || dk === 'folde') {
     const ix0 = f + gap, ix1 = w - f - gap, iy0 = f + gap, iy1 = h - fb - gap, iw = ix1 - ix0;
@@ -650,22 +684,23 @@ function plainDrawing(p, maxSide) {
         x.save(); x.fillStyle = '#c0392b'; x.font = `700 ${Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.07)}px -apple-system, Helvetica, Arial, sans-serif`;
         x.textAlign = 'center'; x.textBaseline = 'bottom'; x.fillText(p.dRetn === 'ud' ? 'UDAD' : 'INDAD', (rx0 + rx1) / 2, ry1 - 3); x.restore();
       };
-      if (!p.dGlas) {
-        // massivt dørblad med fyldning
-        x.fillStyle = '#f3efe8'; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
-        const ip = Math.min(gx1 - gx0, gy1 - gy0) * 0.12;
-        x.save(); x.strokeStyle = '#b8b0a2'; x.strokeRect(gx0 + ip, gy0 + ip, gx1 - gx0 - 2 * ip, (gy1 - gy0) * 0.45 - ip);
-        x.strokeRect(gx0 + ip, gy0 + (gy1 - gy0) * 0.55, gx1 - gx0 - 2 * ip, (gy1 - gy0) * 0.45 - ip); x.restore();
+      const lf = fyldAt(L, fr) || dFyldOf(p);
+      if (lf !== 'glas') {
+        // dørblad med fyldning (friseret, glat eller med spor)
+        tegnFyld(x, lf, gx0, gx1, gy0, gy1, lw);
         drawLeaf(); nrDoer(); continue;
       }
       setTimeout(() => {}, 0);
       x._drawLeafAfter = drawLeaf;
     }
-    x.fillStyle = GLAS; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
-    x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.8; x.beginPath();
-    const gw = gx1 - gx0, gh = gy1 - gy0;
-    x.moveTo(gx0 + gw * .12, gy0 + gh * .22); x.lineTo(gx0 + gw * .26, gy0 + gh * .08);
-    x.moveTo(gx0 + gw * .14, gy0 + gh * .32); x.lineTo(gx0 + gw * .36, gy0 + gh * .1); x.stroke(); x.restore();
+    const gw = gx1 - gx0, gh = gy1 - gy0, fyF = glas ? null : fyldAt(L, fr);
+    if (fyF && fyF !== 'glas') tegnFyld(x, fyF, gx0, gx1, gy0, gy1, lw);
+    else {
+      x.fillStyle = GLAS; x.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0); x.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+      x.save(); x.strokeStyle = '#a9c4e3'; x.lineWidth = lw * 0.8; x.beginPath();
+      x.moveTo(gx0 + gw * .12, gy0 + gh * .22); x.lineTo(gx0 + gw * .26, gy0 + gh * .08);
+      x.moveTo(gx0 + gw * .14, gy0 + gh * .32); x.lineTo(gx0 + gw * .36, gy0 + gh * .1); x.stroke(); x.restore();
+    }
     if (fast) {
       x.save(); x.fillStyle = '#7a8aa3'; x.font = `600 ${Math.max(10, Math.min(gw, gh) * 0.14)}px -apple-system, Helvetica, Arial, sans-serif`;
       x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('FAST', (gx0 + gx1) / 2, gy1 - Math.max(10, gh * 0.12)); x.restore();
@@ -804,6 +839,8 @@ function linesEditor(p, fu) {
           : `<button type="button" class="chip" data-o="fast">Fast</button><button type="button" class="chip" data-o="side">Sidehængt</button>
           <button type="button" class="chip" data-o="top">Tophængt</button><button type="button" class="chip" data-o="topstyret">Topstyret</button><button type="button" class="chip" data-o="vende">Vendevindue</button><button type="button" class="chip" data-o="d180">180°</button>
           <button type="button" class="chip" data-o="ingen">Ingen</button>`}</div>
+        <div style="font-size:12px;color:#bbb;margin:2px 0 4px">Fyldning i valgte felt(er)</div>
+        <div class="chips" id="lFyld" style="margin:0 0 6px">${Object.entries(FYLD).map(([k, v]) => `<button type="button" class="chip" data-f="${k}">${v}</button>`).join('')}</div>
         <div id="lSideOpts" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <div class="seg" id="lHinge" style="flex:1 1 220px"><button type="button" data-h="v">Hængsel venstre</button><button type="button" data-h="h">Hængsel højre</button></div>
           <label class="check small ${p.type === 'dor' ? 'hidden' : ''}" style="margin:0;color:#111"><input type="checkbox" id="lBrems"> Bremse</label>
@@ -837,7 +874,14 @@ function linesEditor(p, fu) {
     function draw() {
       box.querySelectorAll('.ln, .fsel').forEach(e => e.remove());
       for (const fr of fracFields(L)) {
-        const o = openAt(L, fr), fast = isFast(L, fr); if (!fast && !o) continue;
+        const o = openAt(L, fr), fast = isFast(L, fr), fy = fyldAt(L, fr);
+        if (fy && fy !== 'glas') {   // fyldning: brunlig baggrund og navn øverst i feltet
+          const ef = document.createElement('div'); ef.className = 'fsel';
+          ef.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;background:rgba(200,170,120,.35);display:flex;align-items:flex-start;justify-content:center;pointer-events:none`;
+          ef.innerHTML = `<span style="background:#c8aa78;color:#111;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;margin-top:8px;text-align:center">${FYLD[fy].toUpperCase()}</span>`;
+          box.appendChild(ef);
+        }
+        if (!fast && !o) continue;
         const txt = fast ? 'FAST' : o.type === 'side' ? `SIDEHÆNGT – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}${o.brems ? ' · BREMSE' : ''}` : o.type === 'top' ? 'TOPHÆNGT' : o.type === 'topstyret' ? 'TOPSTYRET' : o.type === 'd180' ? '180°' : o.type === 'dor' ? `DØR – HÆNGSEL ${o.hinge === 'h' ? 'HØJRE' : 'VENSTRE'}` : o.type === 'sideparti' ? 'FAST SIDEPARTI' : 'VENDEVINDUE';
         const el = document.createElement('div'); el.className = 'fsel';
         el.style.cssText = `position:absolute;left:${fr[0] * W}px;top:${fr[2] * H}px;width:${(fr[1] - fr[0]) * W}px;height:${(fr[3] - fr[2]) * H}px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none`;
@@ -882,6 +926,8 @@ function linesEditor(p, fu) {
         const typer = frs.map(fr => isFast(L, fr) ? 'fast' : (openAt(L, fr) || {}).type || 'ingen');
         const fælles = typer.every(t2 => t2 === typer[0]) ? typer[0] : null;
         bg.querySelectorAll('#lOpen .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.o === fælles));
+        const fy = frs.map(fr => fyldAt(L, fr) || 'glas'), fyF = fy.every(t2 => t2 === fy[0]) ? fy[0] : null;
+        bg.querySelectorAll('#lFyld .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.f === fyF));
         const sider = frs.map(fr => openAt(L, fr)).filter(o => o && (o.type === 'side' || o.type === 'dor') && !isFast(L, frs.find(f2 => inFr(f2, o.pt))));
         bg.querySelector('#lSideOpts').classList.toggle('hidden', !sider.length);
         if (sider.length) {
@@ -1033,11 +1079,17 @@ function linesEditor(p, fu) {
       }
       draw();
     });
+    bg.querySelectorAll('#lFyld .chip').forEach(c2 => c2.onclick = () => {
+      const frs = selFields(); if (!frs.length) return; const t2 = c2.dataset.f;
+      L.fyld = (L.fyld || []).filter(o => !frs.some(fr => inFr(fr, o.pt)));
+      if (t2 !== 'glas') for (const fr of frs) L.fyld.push({ pt: [r3((fr[0] + fr[1]) / 2), r3((fr[2] + fr[3]) / 2)], t: t2 });
+      draw();
+    });
     const sideSet = fn => { for (const fr of selFields()) { const o = openAt(L, fr); if (o && (o.type === 'side' || o.type === 'dor')) fn(o); } draw(); };
     bg.querySelectorAll('#lHinge button').forEach(b2 => b2.onclick = () => sideSet(o => { o.hinge = b2.dataset.h; }));
     bg.querySelector('#lBrems').onchange = e => sideSet(o => { o.brems = e.target.checked; });
-    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [] }; sel.clear(); selF = []; draw(); };
-    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open; L = normLines(detectLines(img, p.crop)); L.fast = fast; L.open = open; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
+    bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [], fyld: [] }; sel.clear(); selF = []; draw(); };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open, fyld = L.fyld; L = normLines(detectLines(img, p.crop)); L.fast = fast; L.open = open; L.fyld = fyld; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);
     const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
     bg.querySelector('#lNo').onclick = () => done(null);
@@ -1192,7 +1244,7 @@ function tegnFoldePlan(x, p, L, R, top, fs) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', p.dGlas ? 1 : 0, p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.ventil ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', dFyldOf(p), p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1327,7 +1379,7 @@ function renderAdr() {
         ${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
         ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
-        ${aabningLines(p).map(t => `<div class="muted">${esc(t)}</div>`).join('')}
+        ${[...aabningLines(p), ...fyldLines(p)].map(t => `<div class="muted">${esc(t)}</div>`).join('')}
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
         ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
@@ -1426,6 +1478,7 @@ const sketchExtra = p => {
   if (symTxt(p)) a.push(['#1b1f24', symTxt(p)]);
   if (fastTxt(p)) a.push(['#1b1f24', fastTxt(p)]);
   for (const t of aabningLines(p)) a.push(['#c0392b', t]);
+  for (const t of fyldLines(p)) a.push(['#8a6d3b', t]);
   for (const f of farveTxt(p)) a.push(['#1b1f24', f]);
   if (tilTxt(p)) a.push(['#17694a', tilTxt(p)]);
   if (pladeTxt(p)) a.push(['#1b1f24', pladeTxt(p)]);
@@ -1478,7 +1531,8 @@ function editPos(s, a, existing) {
         <div class="seg" id="eDFoldSide" style="margin-top:8px"><button type="button" data-v="v">Foldes mod venstre</button><button type="button" data-v="h">Foldes mod højre</button></div>
       </div>
       <div id="eDRetnWrap"><div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div></div>
-      <label class="check"><input type="checkbox" id="eDGlas" ${p.dGlas ? 'checked' : ''}> Med glas</label>
+      <div style="margin-top:8px"><span class="muted" style="font-size:14px">Fyldning i døren</span>
+        <div class="seg" id="eDFyld" style="margin-top:4px">${Object.keys(FYLD).map(k => `<button type="button" data-v="${k}">${{ glas: 'Glas', friseret: 'Friseret', glat: 'Glat plade', spor: 'Plade m. spor' }[k]}</button>`).join('')}</div></div>
       <div id="eDLaasWrap" style="display:flex;gap:8px">
         <label class="check" style="flex:1"><input type="checkbox" id="eDLaas" ${p.dLaas ? 'checked' : ''}> Lås</label>
         <label class="check" style="flex:1"><input type="checkbox" id="eDSuppl" ${p.dSuppl ? 'checked' : ''}> Suppleringslås</label>
@@ -1588,11 +1642,11 @@ function editPos(s, a, existing) {
       if (+p.b > KARM_MAX) hint.insertAdjacentHTML('afterbegin', `<div style="color:#c0392b;font-weight:600;margin-bottom:4px">⚠︎ Karmen må max være 6 m – bredden er ${fmtMM(p.b)} mm</div>`);
       hint.querySelectorAll('#eDFlojValg button').forEach(b2 => b2.onclick = () => { p.dFloj = +b2.dataset.v; updDor(); redraw(); });
     }
-    bg.querySelector('#eDGlas').checked = k === 'hoved' ? !!p.dGlas : p.dGlas !== false;
+    bg.querySelectorAll('#eDFyld button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === dFyldOf(p)));
   };
   bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.onclick = () => { p.dHinge = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.onclick = () => { p.dRetn = b2.dataset.v; updDor(); redraw(); });
-  bg.querySelector('#eDGlas').addEventListener('change', e => { p.dGlas = e.target.checked; redraw(); });
+  bg.querySelectorAll('#eDFyld button').forEach(b2 => b2.onclick = () => { p.dFyld = b2.dataset.v; p.dGlas = p.dFyld === 'glas'; updDor(); redraw(); });
   bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.onclick = () => {
     p.dKind = c2.dataset.k; if (p.dKind !== 'hoved' && p.dGlas === undefined) p.dGlas = true;
     if (p.dKind === 'folde' && !p.dFloj) { const fo = flojForslag(p); p.dFloj = fo.length ? fo[0].n : 3; } updDor(); redraw(); });
@@ -1854,7 +1908,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${p.ventil ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -1898,7 +1952,7 @@ function posLines(p) {
     `${typeNavn(p)} · ${p.antal || 1} stk`,
     dorTxt(p),
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
-    karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p),
+    karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p), ...fyldLines(p),
     p.ventil ? 'Med ventil' : '',
     p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
     tilTxt(p), pladeTxt(p), ...farveTxt(p),

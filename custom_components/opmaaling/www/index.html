@@ -100,14 +100,15 @@
   .stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; height: 50px; }
   .sketch { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; display: block; }
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
-  .sheet { background: var(--bg); width: 100%; max-width: 720px; max-height: 94vh; overflow-y: auto;
-    border-radius: 18px 18px 0 0; padding: 14px 14px calc(20px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+  .sheet { background: var(--bg); width: 100%; max-width: 720px; max-height: 94vh; max-height: calc(100dvh - 20px); overflow-y: auto;
+    border-radius: 18px 18px 0 0; padding: 14px 14px calc(90px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
   .sheet h2 { margin: 2px 0 6px; font-size: 20px; }
   .sheet-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: -14px;
     background: var(--bg); padding: 4px 0 8px; z-index: 2; }
   .sheet-top button { border: 0; background: none; font-size: 17px; color: var(--blue); padding: 8px 4px; }
   .sheet-top button.save { font-weight: 700; }
   .dialog-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .dialog-bg { height: 100vh; height: 100dvh; bottom: auto; }
   .dialog { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 380px; }
   .dialog p { margin: 0 0 12px; }
   .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + env(safe-area-inset-bottom));
@@ -134,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.5.6';
+const APP_VERSION = '0.5.7';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -785,7 +786,7 @@ function linesEditor(p, fu) {
         </div>
       </div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAuto" ${img ? '' : 'disabled'}>Find automatisk</button><button class="btn sec small" id="lClear">Fjern alle</button></div>
-      <div class="btns" style="margin-top:0"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
+      <div class="btns" style="margin-top:0;position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));background:#111;padding:8px 0 calc(10px + env(safe-area-inset-bottom));z-index:3"><button class="btn sec" id="lNo">Annuller</button><button class="btn" id="lOk">Færdig</button></div>
     </div>`;
     document.body.appendChild(bg);
     const box = bg.querySelector('#lBox'), cv = bg.querySelector('#lCv'), wrap = bg.querySelector('#lWrap');
@@ -1473,7 +1474,7 @@ function editPos(s, a, existing) {
     <textarea id="eNote" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
     <div class="btns" style="margin-top:14px"><button class="btn" id="eShareSk">📄 Del skitse som PDF</button></div>
     ${isNew ? '' : `<button class="btn danger" id="eDel" style="margin-top:6px">Slet position</button>`}
-    <button class="btn" id="eSave2" style="margin-top:10px">Gem</button>
+    <div style="position:sticky;bottom:calc(-90px - env(safe-area-inset-bottom));background:var(--bg);padding:8px 0 10px;z-index:3"><button class="btn" id="eSave2" style="margin-top:0">Gem</button></div>
   </div>`;
   document.body.appendChild(bg);
   document.body.style.overflow = 'hidden';

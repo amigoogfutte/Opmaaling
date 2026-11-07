@@ -131,7 +131,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.3.4';
+const APP_VERSION = '0.3.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1490,21 +1490,26 @@ async function sharePDF(s, only) {
   try { file = await makePDF(s, only); }
   catch (e) { toast('PDF kunne ikke laves – prøv igen med internet'); return; }
   const title = `${sagLabel(s)}${only ? ' – ' + only.adresse : ''}`;
-  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title, text: `Opmåling: ${title}` }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }
-  }
-  // Reserve (fx på computeren): gem/åbn PDF'en
+  const kanDele = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+  const del = async () => { try { await navigator.share({ files: [file], title, text: `Opmåling: ${title}` }); return true; } catch (e) { return e && e.name === 'AbortError'; } };
+  // Telefon/tablet: delemenuen viser alle mail-apps – åbn den direkte
+  const mobil = matchMedia('(pointer: coarse)').matches && /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent);
+  if (mobil && kanDele && await del()) return;
+  // Computer: Windows' delemenu viser ikke alle mailprogrammer, så vis valg
   const url = URL.createObjectURL(file);
   const bg = document.createElement('div'); bg.className = 'sheet-bg';
-  bg.innerHTML = `<div class="sheet"><h2>PDF er klar</h2><p class="muted">Gem filen og vedhæft den i en mail.</p>
-    <a class="btn" href="${url}" download="${esc(file.name)}" style="text-align:center;text-decoration:none;margin:8px 0">Gem PDF</a>
+  bg.innerHTML = `<div class="sheet"><h2>PDF er klar</h2>
+    <p class="muted">${esc(file.name)}<br>Gem filen og vedhæft den i dit mailprogram – det virker med alle mailprogrammer, også Gmail i browseren.</p>
+    <a class="btn" href="${url}" download="${esc(file.name)}" style="text-align:center;text-decoration:none;margin:8px 0">⬇️ Gem PDF</a>
     <a class="btn sec" href="${url}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;margin:8px 0">Åbn PDF</a>
+    ${kanDele ? '<button class="btn sec" id="pdfShare" style="margin:8px 0">Del …</button>' : ''}
     <button class="btn sec" id="pdfClose" style="margin-top:10px">Luk</button></div>`;
   document.body.appendChild(bg);
-  bg.querySelector('#pdfClose').onclick = () => { bg.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+  const close = () => { bg.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); };
+  bg.querySelector('#pdfClose').onclick = close;
+  const sh = bg.querySelector('#pdfShare'); if (sh) sh.onclick = async () => { if (await del()) close(); };
+  bg.querySelector('a[download]').addEventListener('click', () => setTimeout(() => toast('PDF gemt i Overførsler'), 300));
 }
-
 async function shareText(s, only) {
   const txt = listText(s, only);
   const adrs = only ? [only] : (s.adresser || []);

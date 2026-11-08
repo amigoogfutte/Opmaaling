@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.7';
+const APP_VERSION = '0.9.8';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -2198,6 +2198,7 @@ function editPos(s, a, existing) {
   const doSave = async () => {
     read();
     if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
+    if (harTil(p) && !(p.tilSider || []).length) { toast('Vælg hvor tilsætningen skal være'); const w2 = bg.querySelector('#eTilWrap'); if (w2) { w2.scrollIntoView({ block: 'center' }); w2.style.outline = '2px solid #c0392b'; w2.style.borderRadius = '10px'; setTimeout(() => { w2.style.outline = ''; }, 2500); } return; }
     if (farveFejl(p)) { toast(farveFejl(p)); bg.querySelector('#eFarveFejl').scrollIntoView({ block: 'center' }); return; }
     const dup = (s.adresser || []).map(ad => [ad, ad.pos.find(q => q.id !== p.id && q.nr === p.nr)]).find(([, q]) => q);
     if (dup && !(await dialog({ text: `Pos. ${p.nr} bruges allerede på ${dup[0].adresse}. Gem alligevel med samme nummer?`, ok: 'Gem alligevel' }))) return;

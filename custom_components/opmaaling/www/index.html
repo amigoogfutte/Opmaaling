@@ -135,7 +135,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -292,8 +292,8 @@ function dorLeaves(p, L, frs) {
 const dorTxt = p => {
   if (p.type !== 'dor') return '';
   const k = dKind(p), L = normLines(p.lines), flere = fracFields(L).length > 1;
-  if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, dFyldTxt(p)].join(', ');
-  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, foldTxt(p), p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', dFyldTxt(p)].join(', ');
+  if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, dFyldTxt(p)].filter(Boolean).join(', ');
+  if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, foldTxt(p), p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', dFyldTxt(p)].filter(Boolean).join(', ');
   const laas = [p.dLaas ? 'lås' : '', p.dSuppl ? 'suppleringslås' : ''].filter(Boolean);
   return [flere ? '' : `Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad',
     dFyldTxt(p), laas.length ? 'med ' + laas.join(' og ') : ''].filter(Boolean).join(', ');
@@ -406,8 +406,8 @@ const cellRect = (L, fr, c) => { const vs = [fr[0], ...sprSorted(L, 'v', fr), fr
 const fyldCell = (L, fr, c) => { const ff = (L.fyld || []).filter(o => inFr(fr, o.pt));
   const hit = c && ff.find(o => o.cell && o.cell[0] === c[0] && o.cell[1] === c[1]); return hit ? hit.t : (ff.find(o => !o.cell) || {}).t || null; };
 // dørens fyldning (gælder alle dørblade/fløje), ældre data: dGlas
-const dFyldOf = p => FYLD[p.dFyld] ? p.dFyld : ((dKind(p) === 'hoved' ? !!p.dGlas : p.dGlas !== false) ? 'glas' : 'friseret');
-const dFyldTxt = p => ({ glas: 'med glas', friseret: 'friseret fyldning', glat: 'glat pladefyldning', spor: 'pladefyldning med spor' })[dFyldOf(p)];
+const dFyldOf = p => 'glas';   // fyldninger vælges kun i tegningen
+const dFyldTxt = p => '';
 // tegn en fyldning i et rektangel
 function tegnFyld(x, t, a, b, c, d, lw) {
   const gw = b - a, gh = d - c, m = Math.min(gw, gh);
@@ -1633,8 +1633,7 @@ function editPos(s, a, existing) {
         <div class="seg" id="eDFoldSide" style="margin-top:8px"><button type="button" data-v="v">Foldes mod venstre</button><button type="button" data-v="h">Foldes mod højre</button></div>
       </div>
       <div id="eDRetnWrap"><div class="seg" id="eDRetn" style="margin-top:8px"><button type="button" data-v="ind">Åbner indad</button><button type="button" data-v="ud">Åbner udad</button></div></div>
-      <div style="margin-top:8px"><span class="muted" style="font-size:14px">Fyldning i døren</span>
-        <div class="seg" id="eDFyld" style="margin-top:4px">${Object.keys(FYLD).map(k => `<button type="button" data-v="${k}">${{ glas: 'Glas', friseret: 'Friseret', glat: 'Glat plade', spor: 'Plade m. spor' }[k]}</button>`).join('')}</div></div>
+      
       <div id="eDLaasWrap" style="display:flex;gap:8px">
         <label class="check" style="flex:1"><input type="checkbox" id="eDLaas" ${p.dLaas ? 'checked' : ''}> Lås</label>
         <label class="check" style="flex:1"><input type="checkbox" id="eDSuppl" ${p.dSuppl ? 'checked' : ''}> Suppleringslås</label>
@@ -1753,11 +1752,9 @@ function editPos(s, a, existing) {
       if (+p.b > KARM_MAX) hint.insertAdjacentHTML('afterbegin', `<div style="color:#c0392b;font-weight:600;margin-bottom:4px">⚠︎ Karmen må max være 6 m – bredden er ${fmtMM(p.b)} mm</div>`);
       hint.querySelectorAll('#eDFlojValg button').forEach(b2 => b2.onclick = () => { p.dFloj = +b2.dataset.v; updDor(); redraw(); });
     }
-    bg.querySelectorAll('#eDFyld button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === dFyldOf(p)));
   };
   bg.querySelectorAll('#eDHinge button').forEach(b2 => b2.onclick = () => { p.dHinge = b2.dataset.v; updDor(); redraw(); });
   bg.querySelectorAll('#eDRetn button').forEach(b2 => b2.onclick = () => { p.dRetn = b2.dataset.v; updDor(); redraw(); });
-  bg.querySelectorAll('#eDFyld button').forEach(b2 => b2.onclick = () => { p.dFyld = b2.dataset.v; p.dGlas = p.dFyld === 'glas'; updDor(); redraw(); });
   bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.onclick = () => {
     p.dKind = c2.dataset.k; if (p.dKind !== 'hoved' && p.dGlas === undefined) p.dGlas = true;
     if (p.dKind === 'folde' && !p.dFloj) { const fo = flojForslag(p); p.dFloj = fo.length ? fo[0].n : 3; } updDor(); redraw(); });
@@ -1860,7 +1857,6 @@ function editPos(s, a, existing) {
     const L = await linesEditor(p, fu);
     if (L) { p.symP = L.symP; p.symS = L.symS; delete L.symP; delete L.symS; delete p.sym; p.lines = L; p.visning = 'tegning';
       // dør med sprosser: sprosser sidder i glas, så døren sættes til glas
-      if (p.type === 'dor' && [...(L.v || []), ...(L.h || [])].some(l => l.t === 'sprosse') && dFyldOf(p) !== 'glas') { p.dFyld = 'glas'; p.dGlas = true; updDor(); toast('Døren er sat til glas, så sprosserne kan ses'); }
       showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
   };
   const autoLines = async () => {

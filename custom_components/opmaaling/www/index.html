@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.5';
+const APP_VERSION = '0.9.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -892,47 +892,133 @@ function plainDrawing(p, maxSide) {
 }
 
 // Find lodrette og vandrette poster/sprosser i fotoet (inden for den markerede ramme)
-function detectLines(img, crop) {
+// Finder poster og sprosser i et foto.
+// Kun lange, lige kanter tæller (det, der står i vinduet – planter, gardiner, ting – giver korte, spredte kanter og sorteres fra).
+// Bredden i mm (ud fra vinduets mål) afgør post/sprosse: en post med rammer på begge sider er bred, en sprosse er smal.
+function detectLines(img, crop, Bmm, Hmm) {
   const cr = crop || { x: 0, y: 0, w: 1, h: 1 };
   const sx = cr.x * img.naturalWidth, sy = cr.y * img.naturalHeight, sw = cr.w * img.naturalWidth, sh = cr.h * img.naturalHeight;
-  const sc = Math.min(1, 360 / Math.max(sw, sh));
+  const sc = Math.min(1, 520 / Math.max(sw, sh));
   const w = Math.max(20, Math.round(sw * sc)), h = Math.max(20, Math.round(sh * sc));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
   const d = ctx.getImageData(0, 0, w, h).data, n = w * h, g = new Float32Array(n), b = new Float32Array(n);
   for (let i = 0; i < n; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-  for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
-    let s = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += g[(y + dy) * w + xx + dx]; b[y * w + xx] = s / 9;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    let s2 = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s2 += g[(y + dy) * w + x + dx]; b[y * w + x] = s2 / 9;
   }
-  const col = new Float32Array(w), row = new Float32Array(h);
-  for (let y = 2; y < h - 2; y++) for (let xx = 2; xx < w - 2; xx++) {
-    const i = y * w + xx;
-    const gx = -b[i - w - 1] - 2 * b[i - 1] - b[i + w - 1] + b[i - w + 1] + 2 * b[i + 1] + b[i + w + 1];
-    const gy = -b[i - w - 1] - 2 * b[i - w] - b[i - w + 1] + b[i + w - 1] + 2 * b[i + w] + b[i + w + 1];
-    const ax = Math.abs(gx), ay = Math.abs(gy);
-    if (ax > ay * 1.3) col[xx] += ax; else if (ay > ax * 1.3) row[y] += ay;
+  // kanter: lodrette (ev) og vandrette (eh) som 0/1
+  const GX = new Float32Array(n), GY = new Float32Array(n), mags = [];
+  for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) {
+    const i = y * w + x;
+    GX[i] = -b[i - w - 1] - 2 * b[i - 1] - b[i + w - 1] + b[i - w + 1] + 2 * b[i + 1] + b[i + w + 1];
+    GY[i] = -b[i - w - 1] - 2 * b[i - w] - b[i - w + 1] + b[i + w - 1] + 2 * b[i + w] + b[i + w + 1];
+    if ((x + y) % 3 === 0) mags.push(Math.max(Math.abs(GX[i]), Math.abs(GY[i])));
   }
-  const peaks = (arr, len, span) => {
-    const a = arr.map(v => v / span), sm = new Float32Array(len);
-    for (let i = 2; i < len - 2; i++) sm[i] = (a[i - 2] + a[i - 1] + a[i] + a[i + 1] + a[i + 2]) / 5;
-    const m0 = Math.round(len * 0.08), m1 = len - m0, vals = [];
-    for (let i = m0; i < m1; i++) vals.push(sm[i]);
-    if (!vals.length) return [];
-    const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
-    const sd = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
-    const max = Math.max(...vals), thr = Math.max(mean + 2.2 * sd, max * 0.45);
-    const raw = [];
-    for (let i = m0; i < m1; i++) if (sm[i] >= thr && sm[i] >= sm[i - 1] && sm[i] >= sm[i + 1]) raw.push(i);
-    // en post/sprosse har to kanter tæt på hinanden – læg dem sammen; bred = post, smal = sprosse
-    const groups = [];
-    for (const i of raw) { const gr = groups[groups.length - 1]; if (gr && i - gr[gr.length - 1] <= len * 0.07) gr.push(i); else groups.push([i]); }
-    return groups.slice(0, 5).map(gr => ({
-      p: Math.round((gr[0] + gr[gr.length - 1]) / 2 / len * 1000) / 1000,
-      t: (gr[gr.length - 1] - gr[0]) / len >= 0.03 ? 'post' : 'sprosse'
-    }));
+  mags.sort((a, c2) => a - c2);
+  const T = Math.max(14, mags[Math.floor(mags.length * 0.82)] || 14);
+  // 1 = kant fra mørk til lys, 2 = fra lys til mørk (en stang har én af hver)
+  const ev = new Uint8Array(n), eh = new Uint8Array(n);
+  for (let i = 0; i < n; i++) { const ax = Math.abs(GX[i]), ay = Math.abs(GY[i]); if (ax > T && ax > ay * 1.4) ev[i] = GX[i] > 0 ? 1 : 2; else if (ay > T && ay > ax * 1.4) eh[i] = GY[i] > 0 ? 1 : 2; }
+  // mm pr. pixel (samme i begge retninger); mangler målene, gættes der på 1300 mm i den længste retning
+  const mmPx = +Bmm ? +Bmm / w : +Hmm ? +Hmm / h : 1300 / Math.max(w, h);
+  const px = mm => mm / mmPx;
+  // dækning: hvor stor en del af strækningen [a0,a1] har kant i position q (±1 px)
+  const cover = (k, q, a0, a1, sg) => {
+    let hit = 0, tot = 0;
+    for (let t = Math.round(a0); t < Math.round(a1); t++) {
+      tot++;
+      for (let dq = -1; dq <= 1; dq++) { const qq = q + dq; const e = k === 'v' ? (qq >= 0 && qq < w ? ev[t * w + qq] : 0) : (qq >= 0 && qq < h ? eh[qq * w + t] : 0); if (e && (!sg || e === sg)) { hit++; break; } }
+    }
+    return tot ? hit / tot : 0;
   };
-  return { v: peaks(col, w, h), h: peaks(row, h, w) };
+  // lange kanter i området [lo,hi] (på tværs) målt over [a0,a1] (på langs); sg = kun den ene slags kant
+  const kanter = (k, lo, hi, a0, a1, thr, sg) => {
+    const cov = []; for (let q = Math.round(lo); q <= Math.round(hi); q++) cov.push([q, cover(k, q, a0, a1, sg)]);
+    const out = [];
+    cov.forEach(([q, v], i) => { if (v >= thr && v >= (cov[i - 1] || [0, 0])[1] && v >= (cov[i + 1] || [0, 0])[1] && !out.some(o => Math.abs(o - q) <= 2)) out.push(q); });
+    return out;
+  };
+  // sprosse = to lange kanter med modsat retning, 10–80 mm fra hinanden (en kant alene – fx en bordkant bag ruden – tæller ikke)
+  const sprosser = (k, lo, hi, a0, a1, thr = 0.6) => {
+    const e1 = kanter(k, lo, hi, a0, a1, thr, 1), e2 = kanter(k, lo, hi, a0, a1, thr, 2), ud = [];
+    const alle = kanter(k, lo - px(60), hi + px(60), a0, a1, 0.4);
+    for (const q1 of e1) for (const q2 of e2) {
+      const dd = Math.abs(q2 - q1); if (dd < px(10) || dd > px(80)) continue;
+      // glas på begge sider: ingen anden lang kant lige uden for (ellers er det kanten af en ramme)
+      const l0 = Math.min(q1, q2), h0 = Math.max(q1, q2);
+      if (thr >= 0.5 && alle.some(q => (q < l0 - 3 && q > l0 - px(50)) || (q > h0 + 3 && q < h0 + px(50)))) continue;   // (ikke når vi leder efter en sprosse, der er fundet i nabofeltet)
+      const c2 = (q1 + q2) / 2; if (!ud.some(o => Math.abs(o - c2) < px(60))) ud.push(c2);
+    }
+    return ud;
+  };
+  // kanter tæt på hinanden er samme stang; bred stang (med rammer) = post, smal = sprosse
+  const stænger = es => {
+    const gr = [];
+    for (const q of es.sort((a, c2) => a - c2)) { const last = gr[gr.length - 1]; if (last && q - last[last.length - 1] <= px(150)) last.push(q); else gr.push([q]); }
+    return gr.map(a => ({ c: (a[0] + a[a.length - 1]) / 2, bredde: (a[a.length - 1] - a[0]) * mmPx }));
+  };
+  const r3 = v => Math.round(v * 1000) / 1000;
+  // 1) poster over hele vinduet (karm + ramme yderst springes over)
+  const kant = (len) => Math.min(len * 0.25, px(170));
+  // en post er et bredt bånd af kanter (ramme – post – ramme); båndet udvides med svagere kanter, så midten bliver rigtig
+  // midten findes mellem glassets to kanter: det stærkeste par lange kanter med modsat retning, 60–260 mm fra hinanden
+  const poster = (k, len, tvaers) => stænger(kanter(k, kant(len), len - kant(len), 0, tvaers, 0.3)).filter(s2 => s2.bredde >= 90).map(s2 => {
+    const lo = Math.max(1, Math.round(s2.c - px(220))), hi = Math.min(len - 2, Math.round(s2.c + px(220)));
+    const top = sg => { const cv = []; for (let q = lo; q <= hi; q++) cv.push([q, cover(k, q, 0, tvaers, sg)]);
+      return cv.filter(([q, v], i) => v >= 0.12 && v >= (cv[i - 1] || [0, 0])[1] && v >= (cv[i + 1] || [0, 0])[1]); };
+    const e1 = top(1), e2 = top(2); let best = null;
+    for (const [q1, v1] of e1) for (const [q2, v2] of e2) {
+      const dd = Math.abs(q2 - q1) * mmPx; if (dd < 60 || dd > 260) continue;
+      const mid = (q1 + q2) / 2; if (Math.abs(mid - s2.c) > px(150)) continue;
+      const sc2 = Math.min(v1, v2) * 2 + v1 + v2; if (!best || sc2 > best.sc) best = { sc: sc2, c: mid, bredde: dd };
+    }
+    return best ? { c: best.c, bredde: Math.max(best.bredde, s2.bredde) } : s2;
+  });
+  const postV = poster('v', w, h), postH = poster('h', h, w);
+  const L = { v: postV.map(s2 => ({ p: r3(s2.c / w), t: 'post', a: 0, b: 1 })), h: postH.map(s2 => ({ p: r3(s2.c / h), t: 'post', a: 0, b: 1 })) };
+  // poster, der kun går et stykke (fx under et overvindue): find det stykke, de faktisk er der
+  const del = (k, l) => {
+    const andre = [0, ...L[k === 'v' ? 'h' : 'v'].map(o => o.p).sort((a, c2) => a - c2), 1];
+    const len = k === 'v' ? h : w, q = Math.round(l.p * (k === 'v' ? w : h)), stk = [];
+    for (let i = 0; i < andre.length - 1; i++) if (cover(k, q, andre[i] * len, andre[i + 1] * len) >= 0.25 || cover(k, q + Math.round(px(40)), andre[i] * len, andre[i + 1] * len) >= 0.25 || cover(k, q - Math.round(px(40)), andre[i] * len, andre[i + 1] * len) >= 0.25) stk.push([andre[i], andre[i + 1]]);
+    if (stk.length) { l.a = stk[0][0]; l.b = stk[stk.length - 1][1]; }
+  };
+  L.v.forEach(l => del('v', l)); L.h.forEach(l => del('h', l));
+  // 2) sprosser i hvert felt: kanten skal gå næsten hele vejen gennem feltet
+  for (const fr of fracFields(normLines(L))) {
+    const ind = (f0, edge) => edge ? px(110) : px(110);   // fra karm: karm + ramme; fra post: halv post + ramme
+    const x0 = fr[0] * w + ind(0, fr[0] < 0.001), x1 = fr[1] * w - ind(0, fr[1] > 0.999), y0 = fr[2] * h + ind(0, fr[2] < 0.001), y1 = fr[3] * h - ind(0, fr[3] > 0.999);
+    if (x1 - x0 < 8 || y1 - y0 < 8) continue;
+    sprosser('v', x0, x1, y0, y1).forEach(c2 => L.v.push({ p: r3(c2 / w), t: 'sprosse', a: r3(fr[2]), b: r3(fr[3]) }));
+    sprosser('h', y0, y1, x0, x1).forEach(c2 => L.h.push({ p: r3(c2 / h), t: 'sprosse', a: r3(fr[0]), b: r3(fr[1]) }));
+  }
+  // sprosser sidder som regel i samme højde i alle rammer: se efter med mindre krav i de felter, hvor den mangler
+  {
+    const frs = fracFields(normLines({ v: L.v.filter(l => l.t === 'post'), h: L.h.filter(l => l.t === 'post') }));
+    for (const k of ['v', 'h']) {
+      const fundne = []; for (const q of L[k].filter(l => l.t === 'sprosse').map(l => l.p)) if (!fundne.some(f2 => Math.abs(f2 - q) < 0.03)) fundne.push(q);
+      for (const fr of frs) {
+        const [lo, hi, a0, a1] = k === 'v' ? [fr[0], fr[1], fr[2], fr[3]] : [fr[2], fr[3], fr[0], fr[1]];
+        const LEN = k === 'v' ? w : h, TV = k === 'v' ? h : w;
+        for (const q of fundne) {
+          if (q <= lo + 0.02 || q >= hi - 0.02) continue;
+          if (L[k].some(l => l.t === 'sprosse' && Math.abs(l.p - q) < 0.06 && l.a <= a0 + 0.01 && l.b >= a1 - 0.01)) continue;
+          const ny = sprosser(k, q * LEN - px(70), q * LEN + px(70), a0 * TV + px(110), a1 * TV - px(110), 0.3);
+          if (ny.length) { const bedst = ny.sort((x1, x2) => Math.abs(x1 - q * LEN) - Math.abs(x2 - q * LEN))[0]; L[k].push({ p: r3(bedst / LEN), t: 'sprosse', a: r3(a0), b: r3(a1) }); }
+        }
+      }
+    }
+  }
+  // samme sprosse fundet i flere felter på række → én lang
+  for (const k of ['v', 'h']) {
+    const spr = L[k].filter(l => l.t === 'sprosse').sort((a, c2) => a.a - c2.a), ud = [];
+    for (const l of spr) { const m = ud.find(o => Math.abs(o.p - l.p) < 0.03 && Math.abs(o.b - l.a) < 0.01); if (m) { m.p = r3((m.p * m.n + l.p) / (m.n + 1)); m.n++; m.b = l.b; } else ud.push({ ...l, n: 1 }); }
+    ud.forEach(o => delete o.n);
+    L[k] = [...L[k].filter(l => l.t === 'post'), ...ud].slice(0, 12);
+  }
+  return L;
 }
 
 // Skærm til at rette tegningens poster og sprosser med fingeren
@@ -1272,7 +1358,7 @@ function linesEditor(p, fu) {
     bg.querySelectorAll('#lHinge button').forEach(b2 => b2.onclick = () => sideSet(o => { o.hinge = b2.dataset.h; }));
     bg.querySelector('#lBrems').onchange = e => sideSet(o => { o.brems = e.target.checked; });
     bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [], fyld: [] }; sel.clear(); selF = []; draw(); };
-    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open, fyld = L.fyld; L = normLines(detectLines(img, p.crop)); L.fast = fast; L.open = open; L.fyld = fyld; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open, fyld = L.fyld; L = normLines(detectLines(img, p.crop, p.b, p.h)); L.fast = fast; L.open = open; L.fyld = fyld; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);
     const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
     bg.querySelector('#lNo').onclick = () => done(null);
@@ -2027,11 +2113,20 @@ function editPos(s, a, existing) {
       // dør med sprosser: sprosser sidder i glas, så døren sættes til glas
       showPhoto = false; updPhotoUI(); updVis(); updSym(); redraw(); }
   };
-  const autoLines = async () => {
-    try { const L = detectLines(await photoImg(fu), p.crop); p.lines = L; p.visning = 'tegning';
-      toast(L.v.length + L.h.length ? `Fandt ${L.v.length + L.h.length} streger` : 'Ingen poster fundet');
+  // målene bruges til at skelne post (bred) fra sprosse (smal); mangler de, findes stregerne igen, når målene skrives
+  let autoJson = null, autoUdenMaal = false;
+  const autoLines = async (stille) => {
+    try { read(); const L = detectLines(await photoImg(fu), p.crop, p.b, p.h); p.lines = L; p.visning = 'tegning';
+      autoJson = JSON.stringify(L); autoUdenMaal = !(+p.b && +p.h);
+      if (!stille) toast((L.v.length + L.h.length ? `Fandt ${L.v.length + L.h.length} streger` : 'Ingen poster fundet') + (autoUdenMaal ? ' – skriv bredde og højde for bedre resultat' : ''));
     } catch (e) { /* ignorer */ }
   };
+  let maalT = null;
+  for (const id of ['#eB', '#eH']) bg.querySelector(id).addEventListener('input', () => {
+    clearTimeout(maalT); maalT = setTimeout(async () => {
+      if (fu && autoUdenMaal && JSON.stringify(p.lines) === autoJson) { await autoLines(true); if (!autoUdenMaal) { updVis(); redraw(); toast('Tegningen er fundet igen ud fra målene'); } }
+    }, 900);
+  });
   const doCrop = async () => { const c = await cropEditor(fu, p.crop); if (c) { p.crop = c; await autoLines(); showPhoto = false; updPhotoUI(); updVis(); redraw(); } };
   bg.querySelector('#eCrop').onclick = doCrop;
   const onFile = async e => {
@@ -2042,6 +2137,7 @@ function editPos(s, a, existing) {
   };
   $('#fileCam').onchange = onFile; $('#fileLib').onchange = onFile;
 
+  const stafk0 = p.stafk || 'uden';
   const farve0 = { ude: [p.fuK || '', p.fuR || '', p.fuEns !== false].join('|'), inde: [p.fiK || '', p.fiR || '', p.fiEns !== false].join('|') };
   const doSave = async () => {
     read();
@@ -2073,9 +2169,18 @@ function editPos(s, a, existing) {
         }
       }
     }
+    // stafkehling ændret: spørg om alle i sagen skal have samme
+    let ekstraS = 0;
+    if (p.type !== 'glas' && (p.stafk || 'uden') !== stafk0) {
+      const andre = allPos(s).filter(q => q.id !== p.id && q.type !== 'glas' && (q.stafk || 'uden') !== (p.stafk || 'uden'));
+      if (andre.length && await dialog({ text: `Du har ændret stafkehling til "${p.stafk === 'med' ? 'Med' : 'Uden'}". Skal alle vinduer og døre i denne sag have det samme?`, ok: 'Ja, ændr alle', cancel: 'Kun denne' })) {
+        for (const q of andre) q.stafk = p.stafk; ekstraS = andre.length;
+      }
+    }
+    if (ekstraS && !ekstra) ekstra = ekstraS;
     if (i >= 0) a.pos[i] = p; else a.pos.push(p);
     a.pos.sort((x, y) => x.nr - y.nr);
-    touch(s); save(); close(); render(); toast(ekstra ? `Gemt – farven er ændret på ${ekstra} andre` : isNew ? 'Position tilføjet' : 'Gemt');
+    touch(s); save(); close(); render(); toast(ekstraS && ekstra === ekstraS ? `Gemt – stafkehling er ændret på ${ekstraS} andre` : ekstra ? `Gemt – farven er ændret på ${ekstra} andre` : isNew ? 'Position tilføjet' : 'Gemt');
   };
   bg.querySelector('#eSave').onclick = doSave; bg.querySelector('#eSave2').onclick = doSave;
   bg.querySelector('#eCancel').onclick = close;

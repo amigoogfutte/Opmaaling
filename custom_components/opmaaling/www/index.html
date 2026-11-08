@@ -138,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.8';
+const APP_VERSION = '0.7.9';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1612,10 +1612,10 @@ const indlTxt = p => p.type === 'glas' && glasLag(p) !== 1 && INDLAEG[p.indlaeg]
 const harSuppl = p => p.type === 'dor' && !panelMode(p) && !!p.dSuppl;
 // ventil: standard 300 mm, i spring af 100 mm, højst 100 mm kortere end rammen (bredeste ramme i øverste række)
 const ventFelt = p => { const L = applyMM(normLines(p.lines), p.b, p.h); const top = fracFields(L).filter(fr => fr[2] < 0.001); return top.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0] || [0, 1, 0, 1]; };
-const VENT_MAX = 500;
+const VENT_MAX = 500, VENT_MIN = 200;
 const ventIRamme = p => p.ventPlac === 'ramme';   // standard: i karmen
-const ventMax = p => { const fr = ventIRamme(p) ? ventFelt(p) : [0, 1]; return Math.min(VENT_MAX, Math.max(100, Math.floor(((fr[1] - fr[0]) * (+p.b || 1000) - 100) / 100) * 100)); };
-const ventL = p => Math.min(ventMax(p), Math.max(100, +p.ventL || 300));
+const ventMax = p => { const fr = ventIRamme(p) ? ventFelt(p) : [0, 1]; return Math.min(VENT_MAX, Math.max(VENT_MIN, Math.floor(((fr[1] - fr[0]) * (+p.b || 1000) - 100) / 100) * 100)); };
+const ventL = p => Math.min(ventMax(p), Math.max(VENT_MIN, +p.ventL || 300));
 const harVentil = p => p.type !== 'glas' && !!p.ventil;   // glas har ingen ventil
 const harTil = p => p.type !== 'glas' && harTil0(p);
 const harTil0 = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
@@ -1887,7 +1887,7 @@ function editPos(s, a, existing) {
     bg.querySelector('#eVentL').value = `${ventL(p)} mm`; };
   bg.querySelectorAll('#eVentP button').forEach(b2 => b2.onclick = () => { p.ventPlac = b2.dataset.v; updVent(); redraw(); });
   bg.querySelector('#eVentil').addEventListener('change', e => { p.ventil = e.target.checked; updVent(); redraw(); });
-  bg.querySelector('#eVMinus').onclick = () => { p.ventL = Math.max(100, ventL(p) - 100); updVent(); redraw(); };
+  bg.querySelector('#eVMinus').onclick = () => { if (ventL(p) <= VENT_MIN) toast(`Den mindste ventil er ${VENT_MIN} mm`); p.ventL = Math.max(VENT_MIN, ventL(p) - 100); updVent(); redraw(); };
   bg.querySelector('#eVPlus').onclick = () => { const mx = ventMax(p); if (ventL(p) >= mx) toast(mx === VENT_MAX ? `Ventilen kan højst være ${VENT_MAX} mm` : `Højst ${mx} mm – 10 cm kortere end ${ventIRamme(p) ? 'rammen' : 'karmen'}`); p.ventL = Math.min(mx, ventL(p) + 100); updVent(); redraw(); };
   for (const id of ['#eB', '#eH']) bg.querySelector(id).addEventListener('input', () => setTimeout(updVent, 0));
   updVent();
@@ -2107,7 +2107,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (ca. ${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -2152,7 +2152,7 @@ function posLines(p) {
     dorTxt(p),
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
     karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p), ...fyldLines(p),
-    harSuppl(p) ? 'Suppleringslås: JA' : '', harVentil(p) ? `Med ventil i ${ventIRamme(p) ? 'ramme' : 'karm'} (${ventL(p)} mm)` : '', glasOpbTxt(p), indlTxt(p),
+    harSuppl(p) ? 'Suppleringslås: JA' : '', harVentil(p) ? `Med ventil i ${ventIRamme(p) ? 'ramme' : 'karm'} (ca. ${ventL(p)} mm)` : '', glasOpbTxt(p), indlTxt(p),
     p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
     tilTxt(p), pladeTxt(p), ...farveTxt(p),
     p.note ? 'Note: ' + p.note : ''

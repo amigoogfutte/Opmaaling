@@ -13,7 +13,8 @@ from aiohttp import web
 from homeassistant.components import frontend
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import Unauthorized
 
 from .const import APP_URL, DOMAIN, MAX_FOTO_BYTES, MAX_SAG_BYTES, PANEL_URL_PATH, STORAGE_DIR
 
@@ -318,6 +319,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for view in (SagerView(hass, store), SagView(hass, store), FotosView(hass, store), FotoView(hass, store), MigView(hass, store), BrugereView(hass, store), FirmaView(hass, store), AppRedirectView()):
             hass.http.register_view(view)
         data["http_registered"] = True
+
+    async def saet_firma(call: ServiceCall) -> None:
+        """Sæt firmanavn og/eller logo (kun administratorer)."""
+        if call.context.user_id:
+            u = await hass.auth.async_get_user(call.context.user_id)
+            if u is None or not u.is_admin:
+                raise Unauthorized()
+        cur = await hass.async_add_executor_job(store.get_firma)
+        if "navn" in call.data:
+            cur["navn"] = str(call.data["navn"])[:120]
+        if "logo" in call.data:
+            logo = str(call.data["logo"] or "")
+            if logo and not logo.startswith("data:image/"):
+                raise ValueError("Logo skal være et billede (data:image/...)")
+            cur["logo"] = logo
+        if "kun_logo" in call.data:
+            cur["kunLogo"] = bool(call.data["kun_logo"]) and bool(cur.get("logo"))
+        cur["updated"] = int(__import__("time").time() * 1000)
+        await hass.async_add_executor_job(store.put_firma, cur)
+
+    if not hass.services.has_service(DOMAIN, "saet_firma"):
+        hass.services.async_register(DOMAIN, "saet_firma", saet_firma)
 
     frontend.async_register_built_in_panel(
         hass,

@@ -1,0 +1,18 @@
+saet_firma:
+  name: Sæt firma
+  description: Sæt firmanavn og logo, som vises i appen og på PDF hos alle brugere.
+  fields:
+    navn:
+      name: Firmanavn
+      example: Mogens Knudsen A/S
+      selector:
+        text:
+    logo:
+      name: Logo
+      description: Billedet som data-URL (data:image/png;base64,...)
+      selector:
+        text:
+    kun_logo:
+      name: Vis kun logoet
+      selector:
+        boolean:

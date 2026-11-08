@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.4';
+const APP_VERSION = '0.9.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1709,7 +1709,7 @@ const farveFejl = p => { const m = p.mat; if (p.type === 'glas' || !m || m === '
   if (m === 'pvc' && (ud.length || ind.length)) return 'PVC kan kun have farver – ikke træ.';
   if (m === 'traealu' && ud.length) return 'Træ/alu er aluminium udvendigt – vælg en farve udvendigt, ikke træ.';
   return ''; };
-const FARVER = ['Hvid', 'Hvid RAL 9010', 'Grå RAL 7035', 'Hvid RAL 9016', 'Cremehvid RAL 9001', 'Antracitgrå RAL 7016', 'Sort RAL 9005', 'Rå træ', 'Teak', 'Mahogni'];
+const FARVER = ['Hvid', 'Hvid RAL 9010', 'Grå RAL 7035', 'Hvid RAL 9016', 'Cremehvid RAL 9001', 'Antracitgrå RAL 7016', 'Sort RAL 9005', 'Teak', 'Mahogni'];
 const sketchExtra = p => {
   const a = [];
   if (karmTxt(p)) a.push(['#1b1f24', karmTxt(p)]);
@@ -2042,6 +2042,7 @@ function editPos(s, a, existing) {
   };
   $('#fileCam').onchange = onFile; $('#fileLib').onchange = onFile;
 
+  const farve0 = { ude: [p.fuK || '', p.fuR || '', p.fuEns !== false].join('|'), inde: [p.fiK || '', p.fiR || '', p.fiEns !== false].join('|') };
   const doSave = async () => {
     read();
     if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
@@ -2049,9 +2050,32 @@ function editPos(s, a, existing) {
     const dup = (s.adresser || []).map(ad => [ad, ad.pos.find(q => q.id !== p.id && q.nr === p.nr)]).find(([, q]) => q);
     if (dup && !(await dialog({ text: `Pos. ${p.nr} bruges allerede på ${dup[0].adresse}. Gem alligevel med samme nummer?`, ok: 'Gem alligevel' }))) return;
     const i = a.pos.findIndex(q => q.id === p.id);
+    // farve ændret: spørg om alle i sagen skal have den nye farve
+    let ekstra = 0;
+    if (p.type !== 'glas') {
+      const nu = { ude: [p.fuK || '', p.fuR || '', p.fuEns !== false].join('|'), inde: [p.fiK || '', p.fiR || '', p.fiEns !== false].join('|') };
+      const sider = ['ude', 'inde'].filter(k => nu[k] !== farve0[k] && (k === 'ude' ? p.fuK : p.fiK));
+      const andre = allPos(s).filter(q => q.id !== p.id && q.type !== 'glas');
+      if (sider.length && andre.length) {
+        const fv = (K, R, E) => p[E] !== false ? p[K] : `karm ${p[K]}, ramme ${p[R] || '–'}`;
+        const navn = sider.map(k => k === 'ude' ? `udvendig ${fv('fuK', 'fuR', 'fuEns')}` : `indvendig ${fv('fiK', 'fiR', 'fiEns')}`).join(' og ');
+        if (await dialog({ text: `Du har ændret farven (${navn}). Skal alle vinduer og døre i denne sag have samme farve?`, ok: 'Ja, ændr alle', cancel: 'Kun denne' })) {
+          for (const q of andre) {
+            let rettet = false;
+            for (const k of sider) {
+              const [K, R, E] = k === 'ude' ? ['fuK', 'fuR', 'fuEns'] : ['fiK', 'fiR', 'fiEns'];
+              const ok = [p[K], p[E] !== false ? '' : p[R]].filter(Boolean).every(farveTilladt(q.mat, k));   // træ kun hvor materialet tillader det
+              if (!ok) continue;
+              q[K] = p[K]; q[R] = p[R]; q[E] = p[E]; rettet = true;
+            }
+            if (rettet) ekstra++;
+          }
+        }
+      }
+    }
     if (i >= 0) a.pos[i] = p; else a.pos.push(p);
     a.pos.sort((x, y) => x.nr - y.nr);
-    touch(s); save(); close(); render(); toast(isNew ? 'Position tilføjet' : 'Gemt');
+    touch(s); save(); close(); render(); toast(ekstra ? `Gemt – farven er ændret på ${ekstra} andre` : isNew ? 'Position tilføjet' : 'Gemt');
   };
   bg.querySelector('#eSave').onclick = doSave; bg.querySelector('#eSave2').onclick = doSave;
   bg.querySelector('#eCancel').onclick = close;
@@ -2122,7 +2146,7 @@ function editPos(s, a, existing) {
     bg.querySelectorAll(`#eGT${k} button`).forEach(b2 => b2.onclick = () => { p['gT' + k] = b2.dataset.v; updGlas(); redraw(); });
     bg.querySelector(`#eGTA${k}`).addEventListener('input', updGlas);
   }
-  const alleFarver = [...new Set([...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))];
+  const alleFarver = [...new Set([...FARVER, ...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR]))].filter(f => f && !/^rå træ$/i.test(f)))];
   // dropdown pr. farvefelt; "Anden farve…" viser et tekstfelt. Træ er ikke med, hvor det ikke er tilladt.
   const fSel = [['FuK', 'ude'], ['FuR', 'ude'], ['FiK', 'inde'], ['FiR', 'inde']];
   const byggSel = () => {

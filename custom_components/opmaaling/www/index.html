@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.8';
+const APP_VERSION = '1.0.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1586,13 +1586,43 @@ function render() {
 }
 const sagLabel = s => s.nr ? `Sag ${s.nr}` : 'Sag uden nummer';
 const fmtDato = t => t ? new Date(t).toLocaleDateString('da-DK') : '';
+// deling mellem brugere (styres af Home Assistant): administratorer ser alle sager, andre kun egne og dem, der er delt med dem
+let mig = null, brugere = [];
+async function hentBrugere() {
+  if (!HA) return;
+  try { const r = await api('mig'); if (r.ok) mig = await r.json(); const r2 = await api('brugere'); if (r2.ok) brugere = await r2.json(); } catch (e) { /* ældre version i HA */ }
+}
+const brugerNavn = id => (brugere.find(u => u.id === id) || {}).navn || 'anden bruger';
+const kanDele = s => mig && (mig.admin || (s.ejer && s.ejer === mig.id) || !s.ejer);
+const delingTxt = s => {
+  if (!mig) return '';
+  if (s.ejer && s.ejer !== mig.id) return `👥 Oprettet af ${brugerNavn(s.ejer)}`;
+  const d = (s.delt || []).filter(id => id !== mig.id);
+  return d.length ? `👥 Delt med ${d.map(brugerNavn).join(', ')}` : '';
+};
+async function delSag(s) {
+  await hentBrugere();
+  const andre = brugere.filter(u => !mig || u.id !== mig.id);
+  if (!andre.length) { await dialog({ text: 'Der er ingen andre brugere i Home Assistant endnu. Opret en bruger under Indstillinger → Personer i Home Assistant, så kan du dele sagen med vedkommende.', ok: 'OK', cancel: null }); return; }
+  const bg = document.createElement('div'); bg.className = 'dialog-bg'; let valgt = new Set(s.delt || []);
+  bg.innerHTML = `<div class="dialog" style="max-width:420px;width:100%"><div style="font-weight:700;font-size:18px;margin-bottom:6px">Del ${esc(sagLabel(s))}</div>
+    <div class="muted" style="font-size:14px;margin-bottom:8px">De valgte kan se og rette denne sag – men ikke dine andre sager. Administratorer kan altid se alle sager.</div>
+    ${andre.map(u => `<label class="check"><input type="checkbox" data-u="${esc(u.id)}" ${u.admin ? 'checked disabled' : valgt.has(u.id) ? 'checked' : ''}> ${esc(u.navn)}${u.admin ? ' <span class="muted">(administrator)</span>' : ''}</label>`).join('')}
+    <div class="btns" style="margin-top:12px"><button class="btn sec" id="dNo">Annuller</button><button class="btn" id="dOk">Gem</button></div></div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#dNo').onclick = () => bg.remove();
+  bg.querySelector('#dOk').onclick = () => {
+    s.delt = [...bg.querySelectorAll('input[data-u]:not([disabled])')].filter(c => c.checked).map(c => c.dataset.u);
+    touch(s); save(); bg.remove(); render(); toast(s.delt.length ? `Delt med ${s.delt.map(brugerNavn).join(', ')}` : 'Sagen er ikke delt');
+  };
+}
 function sagCard(s) {
   const t = totals(s), n = (s.adresser || []).length;
   const adrNavne = (s.adresser || []).map(a => a.adresse).filter(Boolean);
   return `<div class="card clickable row" data-id="${s.id}">
     <div class="grow"><div class="title">${esc(sagLabel(s))}${s.navn ? ' · ' + esc(s.navn) : ''}</div>
     <div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n} adresse${n === 1 ? '' : 'r'}${adrNavne.length ? ': ' + esc(adrNavne.join(', ')) : ''}</div>
-    <div class="muted">${s.arkiveret ? 'Arkiveret ' + fmtDato(s.arkiveretDato) : 'Oprettet ' + fmtDato(s.oprettet)}</div></div>
+    <div class="muted">${s.arkiveret ? 'Arkiveret ' + fmtDato(s.arkiveretDato) : 'Oprettet ' + fmtDato(s.oprettet)}</div>${delingTxt(s) ? `<div style="font-size:13px;color:#1f5fa8">${esc(delingTxt(s))}</div>` : ''}</div>
     <div style="text-align:right;flex:none"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
     <div><b>${t.g}</b> <span class="muted">glas</span></div>${t.d ? `<div><b>${t.d}</b> <span class="muted">${t.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`;
 }
@@ -1663,8 +1693,10 @@ function renderSag() {
     (s.arkiveret ? `<div class="warn" style="display:flex;align-items:center;gap:10px"><span class="grow">Arkiveret ${fmtDato(s.arkiveretDato)}</span><button class="btn small" id="reopen" style="width:auto;padding:8px 14px">Genåbn</button></div>` : '') +
     `<div class="card row" style="padding:10px 12px"><div class="grow"><div class="muted" style="font-size:13px">Sagsnummer</div>
       <div class="title" style="font-size:19px">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted">${esc(s.navn)}</div>` : ''}
-      <div style="font-size:14px;margin-top:4px">🚚 Leveres: ${s.lev ? esc(s.lev) : '<span style="color:#c0392b">ikke angivet – tryk Ret</span>'}</div></div>
-      <button class="btn sec small" id="retSag" style="width:auto;padding:10px 16px">✏️ Ret</button></div>` + `
+      <div style="font-size:14px;margin-top:4px">🚚 Leveres: ${s.lev ? esc(s.lev) : '<span style="color:#c0392b">ikke angivet – tryk Ret</span>'}</div>
+      ${delingTxt(s) ? `<div style="font-size:14px;margin-top:4px;color:#1f5fa8">${esc(delingTxt(s))}</div>` : ''}</div>
+      <div style="display:flex;flex-direction:column;gap:6px"><button class="btn sec small" id="retSag" style="width:auto;padding:10px 16px">✏️ Ret</button>
+      ${HA && kanDele(s) ? `<button class="btn sec small" id="delSag" style="width:auto;padding:10px 16px">👥 Del</button>` : ''}</div></div>` + `
     <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
     <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div><div class="card"><b>${t.d}</b><span class="muted">døre i alt</span></div></div>
     ${adrs.length ? '' : `<div class="empty">Ingen adresser endnu.<br>Tryk på <b>Tilføj adresse</b>.</div>`}
@@ -1678,6 +1710,7 @@ function renderSag() {
   $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
   if (allPos(s).length) { $('#shareTxt').onclick = () => sharePDF(s); }
   $('#retSag').onclick = () => retSag(s);
+  if ($('#delSag')) $('#delSag').onclick = () => delSag(s);
   const ark = $('#arkiver'); if (ark) ark.onclick = () => arkiver(s, true);
   const re = $('#reopen'); if (re) re.onclick = () => arkiver(s, false);
   $('#fabWrap').innerHTML = `<button class="btn fab" id="addAdr">+ Tilføj adresse</button>`;
@@ -2765,6 +2798,7 @@ async function sync() {
   syncing = true; setSync('busy');
   let changedLocal = false;
   try {
+    if (!mig) { await hentBrugere(); changedLocal = true; }
     const remote = await (await api('sager')).json();
     const rmap = new Map(remote.map(r => [r.id, r]));
     // Hent nyere sager fra Home Assistant
@@ -2787,7 +2821,12 @@ async function sync() {
         if (res.status === 409) {
           const j = await res.json(); const i = data.sager.findIndex(s => s.id === sg.id);
           if (j.sag && i >= 0) { data.sager[i] = normalizeSag(j.sag); changedLocal = true; }
+        } else if (res.status === 403) {
+          // ingen adgang (fx ikke længere delt med en, eller man prøvede at slette en delt sag): tag sagen fra serveren igen
+          data.sager = data.sager.filter(s => s.id !== sg.id); changedLocal = true;
+          if (sg.deleted) toast('En sag, der er delt med dig, kan kun slettes af den, der har oprettet den');
         } else if (!res.ok) throw new Error('put ' + res.status);
+        else { try { const j = await res.json(); if (j.ejer !== undefined) { sg.ejer = j.ejer; sg.delt = j.delt || []; changedLocal = true; } } catch (e) { /* ældre version */ } }
       }
     }
     if (changedLocal) save(true);

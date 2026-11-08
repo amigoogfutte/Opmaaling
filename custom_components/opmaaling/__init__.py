@@ -39,34 +39,70 @@ class Store:
         tmp.write_bytes(data)
         os.replace(tmp, path)
 
-    def list_sager(self) -> list[dict]:
+    def _alle(self) -> list[dict]:
         out = []
         for f in self.sager.glob("*.json"):
             try:
-                d = json.loads(f.read_text(encoding="utf-8"))
-                out.append({"id": d.get("id"), "updated": d.get("updated", 0), "deleted": bool(d.get("deleted"))})
+                out.append(json.loads(f.read_text(encoding="utf-8")))
             except (OSError, ValueError):
                 _LOGGER.warning("Kunne ikke læse %s", f)
         return out
 
-    def get_sag(self, sag_id: str) -> bytes | None:
-        f = self.sager / f"{sag_id}.json"
-        return f.read_bytes() if f.exists() else None
+    def list_sager(self, user) -> list[dict]:
+        return [
+            {"id": d.get("id"), "updated": d.get("updated", 0), "deleted": bool(d.get("deleted"))}
+            for d in self._alle()
+            if adgang(user, d)
+        ]
 
-    def put_sag(self, sag_id: str, obj: dict) -> tuple[bool, dict | None]:
+    def read_sag(self, sag_id: str) -> dict | None:
         f = self.sager / f"{sag_id}.json"
-        if f.exists():
-            try:
-                cur = json.loads(f.read_text(encoding="utf-8"))
-                if cur.get("updated", 0) > obj.get("updated", 0):
-                    return False, cur
-            except (OSError, ValueError):
-                pass
+        if not f.exists():
+            return None
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def put_sag(self, sag_id: str, obj: dict, user) -> tuple[int, dict | None]:
+        """Gem en sag. Returnerer (status, data): 200 ok, 409 konflikt (nyere findes), 403 ingen adgang."""
+        f = self.sager / f"{sag_id}.json"
+        cur = self.read_sag(sag_id)
+        if cur is not None:
+            if not adgang(user, cur):
+                return 403, None
+            if cur.get("updated", 0) > obj.get("updated", 0):
+                return 409, cur
+            ejer_el_admin = user.is_admin or (cur.get("ejer") and cur.get("ejer") == user.id)
+            if obj.get("deleted") and not ejer_el_admin:
+                return 403, None   # en sag, der er delt med en, kan man ikke slette for de andre
+            # ejeren kan ikke ændres; kun ejer og administratorer må ændre hvem sagen er delt med
+            obj["ejer"] = cur.get("ejer")
+            if not ejer_el_admin:
+                obj["delt"] = cur.get("delt", [])
+        else:
+            obj["ejer"] = user.id
+            if not user.is_admin:
+                obj["delt"] = []
+        delt = obj.get("delt")
+        obj["delt"] = [u for u in delt if isinstance(u, str)][:50] if isinstance(delt, list) else []
         self._write(f, json.dumps(obj, ensure_ascii=False).encode("utf-8"))
-        return True, None
+        return 200, {"ejer": obj.get("ejer"), "delt": obj["delt"]}
 
-    def list_fotos(self) -> list[str]:
-        return [f.stem for f in self.fotos.glob("*.jpg")]
+    def fotos_med_adgang(self, user) -> set[str] | None:
+        """Billeder i sager, brugeren har adgang til (None = alle, for administratorer)."""
+        if user.is_admin:
+            return None
+        ids: set[str] = set()
+        for d in self._alle():
+            if adgang(user, d):
+                _find_foto_ids(d, ids)
+        return ids
+
+    def list_fotos(self, user) -> list[str]:
+        alle = [f.stem for f in self.fotos.glob("*.jpg")]
+        ok = self.fotos_med_adgang(user)
+        return alle if ok is None else [i for i in alle if i in ok]
 
     def get_foto(self, foto_id: str) -> bytes | None:
         f = self.fotos / f"{foto_id}.jpg"
@@ -74,6 +110,27 @@ class Store:
 
     def put_foto(self, foto_id: str, data: bytes) -> None:
         self._write(self.fotos / f"{foto_id}.jpg", data)
+
+
+def adgang(user, sag: dict) -> bool:
+    """Administratorer ser alle sager; andre kun dem, de selv har oprettet eller som er delt med dem."""
+    if user is None:
+        return False
+    if user.is_admin:
+        return True
+    return sag.get("ejer") == user.id or user.id in (sag.get("delt") or [])
+
+
+def _find_foto_ids(obj, ids: set) -> None:
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "fotoId" and isinstance(v, str):
+                ids.add(v)
+            else:
+                _find_foto_ids(v, ids)
+    elif isinstance(obj, list):
+        for v in obj:
+            _find_foto_ids(v, ids)
 
 
 class _Base(HomeAssistantView):
@@ -89,7 +146,8 @@ class SagerView(_Base):
     name = "api:opmaaling:sager"
 
     async def get(self, request: web.Request) -> web.Response:
-        return self.json(await self.hass.async_add_executor_job(self.store.list_sager))
+        user = request["hass_user"]
+        return self.json(await self.hass.async_add_executor_job(self.store.list_sager, user))
 
 
 class SagView(_Base):
@@ -99,10 +157,10 @@ class SagView(_Base):
     async def get(self, request: web.Request, sag_id: str) -> web.Response:
         if not _ID_RE.match(sag_id):
             return self.json_message("Ugyldigt id", 400)
-        data = await self.hass.async_add_executor_job(self.store.get_sag, sag_id)
-        if data is None:
+        d = await self.hass.async_add_executor_job(self.store.read_sag, sag_id)
+        if d is None or not adgang(request["hass_user"], d):
             return self.json_message("Findes ikke", 404)
-        return web.Response(body=data, content_type="application/json")
+        return self.json(d)
 
     async def put(self, request: web.Request, sag_id: str) -> web.Response:
         if not _ID_RE.match(sag_id):
@@ -118,10 +176,12 @@ class SagView(_Base):
             return self.json_message("Forkert indhold", 400)
         if not obj.get("deleted") and not isinstance(obj.get("pos"), list) and not isinstance(obj.get("adresser"), list):
             return self.json_message("Mangler positioner", 400)
-        ok, cur = await self.hass.async_add_executor_job(self.store.put_sag, sag_id, obj)
-        if not ok:
-            return self.json({"conflict": True, "sag": cur}, 409)
-        return self.json({"ok": True})
+        status, res = await self.hass.async_add_executor_job(self.store.put_sag, sag_id, obj, request["hass_user"])
+        if status == 403:
+            return self.json_message("Ingen adgang", 403)
+        if status == 409:
+            return self.json({"conflict": True, "sag": res}, 409)
+        return self.json({"ok": True, **(res or {})})
 
 
 class FotosView(_Base):
@@ -129,7 +189,7 @@ class FotosView(_Base):
     name = "api:opmaaling:fotos"
 
     async def get(self, request: web.Request) -> web.Response:
-        return self.json(await self.hass.async_add_executor_job(self.store.list_fotos))
+        return self.json(await self.hass.async_add_executor_job(self.store.list_fotos, request["hass_user"]))
 
 
 class FotoView(_Base):
@@ -139,6 +199,9 @@ class FotoView(_Base):
     async def get(self, request: web.Request, foto_id: str) -> web.Response:
         if not _ID_RE.match(foto_id):
             return self.json_message("Ugyldigt id", 400)
+        ok = await self.hass.async_add_executor_job(self.store.fotos_med_adgang, request["hass_user"])
+        if ok is not None and foto_id not in ok:
+            return self.json_message("Findes ikke", 404)
         data = await self.hass.async_add_executor_job(self.store.get_foto, foto_id)
         if data is None:
             return self.json_message("Findes ikke", 404)
@@ -152,8 +215,41 @@ class FotoView(_Base):
             return self.json_message("Ugyldig størrelse", 413)
         if body[:3] != b"\xff\xd8\xff":
             return self.json_message("Kun JPEG", 415)
+        # et eksisterende billede må kun overskrives af nogen, der har adgang til det
+        user = request["hass_user"]
+        findes = await self.hass.async_add_executor_job(self.store.get_foto, foto_id)
+        if findes is not None:
+            ok = await self.hass.async_add_executor_job(self.store.fotos_med_adgang, user)
+            if ok is not None and foto_id not in ok:
+                return self.json_message("Ingen adgang", 403)
         await self.hass.async_add_executor_job(self.store.put_foto, foto_id, body)
         return self.json({"ok": True})
+
+
+class MigView(_Base):
+    """Hvem er logget ind (bruges til at vise deling i appen)."""
+
+    url = "/api/opmaaling/mig"
+    name = "api:opmaaling:mig"
+
+    async def get(self, request: web.Request) -> web.Response:
+        u = request["hass_user"]
+        return self.json({"id": u.id, "navn": u.name, "admin": u.is_admin})
+
+
+class BrugereView(_Base):
+    """Brugere i Home Assistant, som en sag kan deles med."""
+
+    url = "/api/opmaaling/brugere"
+    name = "api:opmaaling:brugere"
+
+    async def get(self, request: web.Request) -> web.Response:
+        users = await self.hass.auth.async_get_users()
+        return self.json([
+            {"id": u.id, "navn": u.name, "admin": u.is_admin}
+            for u in users
+            if u.is_active and not u.system_generated and u.credentials
+        ])
 
 
 class AppRedirectView(HomeAssistantView):
@@ -176,7 +272,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not data.get("http_registered"):
         # HTTP-ruter kan ikke fjernes igen, så de registreres kun én gang pr. opstart.
         await hass.http.async_register_static_paths([StaticPathConfig(APP_URL, str(WWW), False)])
-        for view in (SagerView(hass, store), SagView(hass, store), FotosView(hass, store), FotoView(hass, store), AppRedirectView()):
+        for view in (SagerView(hass, store), SagView(hass, store), FotosView(hass, store), FotoView(hass, store), MigView(hass, store), BrugereView(hass, store), AppRedirectView()):
             hass.http.register_view(view)
         data["http_registered"] = True
 

@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -463,7 +463,7 @@ function normLines(L) {
   const open = (L && Array.isArray(L.open) ? L.open : []).filter(o => o && Array.isArray(o.pt))
     .map(o => ({ pt: [+o.pt[0], +o.pt[1]], type: o.type, hinge: o.hinge === 'h' ? 'h' : 'v', brems: !!o.brems, d180: !!o.d180 }));
   const fyld = (L && Array.isArray(L.fyld) ? L.fyld : []).filter(o => o && Array.isArray(o.pt) && FYLD[o.t]).map(o => ({ pt: [+o.pt[0], +o.pt[1]], t: o.t, ...(Array.isArray(o.cell) ? { cell: [+o.cell[0], +o.cell[1]] } : {}) }));
-  return { v: f(L && L.v), h: f(L && L.h), fast, open, fyld };
+  return { v: f(L && L.v), h: f(L && L.h), fast, open, fyld, ...(L && L.tb ? { tb: true } : {}) };
 }
 // Fyldninger: glas (standard), friseret fyldning, glat plade eller plade med spor
 const FYLD = { glas: 'Glas', friseret: 'Friseret fyldning', glat: 'Glat pladefyldning', spor: 'Pladefyldning med spor' };
@@ -525,6 +525,7 @@ const fyldLines = p => {
   const L = normLines(p.lines), sp = [];
   for (const [k, n1, n2] of [['v', 'lodret', 'lodrette'], ['h', 'vandret', 'vandrette']]) { const n = L[k].filter(l => l.t === 'spaend').length; if (n) sp.push(`${n} ${n === 1 ? n1 + ' spændstykke' : n2 + ' spændstykker'}`); }
   const spTxt = sp.length ? [`${sp.join(' og ')} (ca. ${SPAEND_MM} mm)${panelMode(p) ? ' i hver fløj' : ''}`] : [];
+  if (L.tb && p.type === 'dor' && !panelMode(p)) { const frs = fracFields(L), dl = dorLeaves(p, L, frs); if (dl.some(Boolean) && dl.some(d => !d)) spTxt.push('Sideparti: top- og bundstykke i flugt med døren'); }
   if (!L.fyld.length) return spTxt;
   const frs = fracFields(L), grp = new Map(), ord = p.type === 'dor' ? 'Felt' : 'Ramme';
   frs.forEach((fr, i) => {
@@ -548,6 +549,7 @@ const packLines = L => {
     p: r3(l.p), t: l.t, ...(isPartial(l) ? { a: r3(l.a), b: r3(l.b) } : {}), ...(l.mm ? { mm: l.mm, fra: l.fra || 'start' } : {}) }));
   const out = { v: pk(L.v), h: pk(L.h) }; if (L.fast && L.fast.length) out.fast = L.fast.map(([a, b]) => [r3(a), r3(b)]);
   if (L.fyld && L.fyld.length) out.fyld = L.fyld.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], t: o.t, ...(o.cell ? { cell: o.cell } : {}) }));
+  if (L.tb) out.tb = true;
   if (L.open && L.open.length) out.open = L.open.map(o => ({ pt: [r3(o.pt[0]), r3(o.pt[1])], type: o.type, hinge: o.hinge, brems: o.brems || undefined }));
   return out;
 };
@@ -792,8 +794,10 @@ function plainDrawing(p, maxSide) {
     if (!glas && !fast) { x.fillStyle = RAMME; x.fillRect(rx0, ry0, rx1 - rx0, ry1 - ry0); x.strokeRect(rx0, ry0, rx1 - rx0, ry1 - ry0); }
     const leaf = dor && !!leafInfo && !fast;   // dørblad
     const ins = fast ? rw * 0.3 : leaf ? rw * 1.6 : rw;   // fast felt: glasset sidder direkte i karmen (kun en glasliste)
-    const gx0 = rx0 + ins, gy0 = ry0 + ins, gx1 = rx1 - ins, gy1 = ry1 - ins;
+    const tbFlugt = dor && fast && L.tb && dl && dl.some(Boolean), insY = tbFlugt ? rw * 1.6 : ins;   // sideparti: top/bund i flugt med døren
+    const gx0 = rx0 + ins, gy0 = ry0 + insY, gx1 = rx1 - ins, gy1 = ry1 - insY;
     if (gx1 - gx0 < 4 || gy1 - gy0 < 4) continue;
+    if (tbFlugt) { x.fillStyle = RAMME; for (const [ya, yb] of [[ry0, gy0], [gy1, ry1]]) { x.fillRect(rx0, ya, rx1 - rx0, yb - ya); x.strokeRect(rx0, ya, rx1 - rx0, yb - ya); } }
     const nrDoer = () => { if (!visNr) return; x.save(); x.fillStyle = '#1f5fa8'; x.font = `700 ${Math.max(9, Math.min(rx1 - rx0, ry1 - ry0) * 0.11)}px -apple-system, Helvetica, Arial, sans-serif`;
       x.textBaseline = 'top'; const hv2 = leafInfo && leafInfo.hinge === 'h'; x.textAlign = hv2 ? 'left' : 'right'; x.fillText(String(fi + 1), hv2 ? gx0 + 3 : gx1 - 3, gy0 + 3); x.restore(); };
     if (leaf) {
@@ -1125,7 +1129,8 @@ function linesEditor(p, fu) {
       </div>
       <div class="btns" style="margin-top:8px"><button class="btn sec small" id="lAddVP">+ Lodret post</button><button class="btn sec small" id="lAddHP">+ Vandret post</button></div>
       <div class="btns" style="margin-top:0"><button class="btn sec small" id="lAddVS">+ Lodret sprosse</button><button class="btn sec small" id="lAddHS">+ Vandret sprosse</button></div>
-      ${p.type === 'dor' ? `<div class="btns" style="margin-top:0"><button class="btn sec small" id="lAddVSp">+ Lodret spændstykke</button><button class="btn sec small" id="lAddHSp">+ Vandret spændstykke</button></div>` : ''}
+      ${p.type === 'dor' ? `<div class="btns" style="margin-top:0"><button class="btn sec small" id="lAddVSp">+ Lodret spændstykke</button><button class="btn sec small" id="lAddHSp">+ Vandret spændstykke</button></div>
+      <button class="btn sec small hidden" id="lTB" style="margin:0 0 6px"></button>` : ''}
       <div id="lMaalRow" class="hidden" style="display:flex;gap:8px;align-items:center;margin:2px 0 8px">
         <span id="lMaalLbl" style="font-size:13px;color:#ddd;flex:0 0 auto;max-width:42%;line-height:1.2"></span>
         <input id="lMaal" inputmode="decimal" placeholder="mm" style="flex:1;min-width:0;font-size:17px;padding:9px;border-radius:9px;border:0">
@@ -1230,6 +1235,9 @@ function linesEditor(p, fu) {
           inp.value = one.mm ? one.mm : Math.round((one.fra === 'slut' ? 1 - one.p : one.p) * lenOf(k1));
         }
       }
+      const tbB = bg.querySelector('#lTB');
+      if (tbB) { const frs2 = fracFields(L), dl2 = dorLeaves(p, L, frs2), vis = !pm && dl2.some(Boolean) && dl2.some(d => !d);
+        tbB.classList.toggle('hidden', !vis); tbB.textContent = (L.tb ? '✓ ' : '') + 'Sidepartiets top og bund i flugt med døren'; tbB.classList.toggle('on', !!L.tb); }
       const nf = selFields().length;
       bg.querySelector('#lDel').disabled = !n && !nf; bg.querySelector('#lType').disabled = !n;
       bg.querySelector('#lDel').textContent = n ? (n > 1 ? `Fjern valgte (${n})` : 'Fjern valgt') : nf ? `Fjern sprosser i ramme${nf > 1 ? 'r' : ''}` : 'Fjern valgt';
@@ -1337,8 +1345,27 @@ function linesEditor(p, fu) {
       drag = null; tryk = null;
     };
     box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+    // nyt spændstykke i døren: spørg om det skal følge med over i sidepartiet (og om top/bund skal flugte)
+    const spoergSideparti = (k, nye) => {
+      const frs = fracFields(L), dl = dorLeaves(p, L, frs), sider = frs.filter((_, i) => !dl[i]);
+      const iDor = nye.filter(n => frs.some((fr, i) => dl[i] && sameFr(fr, n.fr)));
+      if (!sider.length || !iDor.length) return;
+      const maal = [];
+      for (const { l } of iDor) for (const fr of sider) {
+        const [lo, hi, a, b] = k === 'h' ? [fr[2], fr[3], fr[0], fr[1]] : [fr[0], fr[1], fr[2], fr[3]];
+        if (l.p <= lo + 0.01 || l.p >= hi - 0.01 || sprIn(L, k, fr).some(q => q.t === 'spaend' && Math.abs(q.p - l.p) < 0.003)) continue;
+        maal.push({ p: l.p, t: 'spaend', a: r3(a), b: r3(b) });
+      }
+      if (!maal.length && L.tb) return;
+      const valg = [];
+      if (maal.length) valg.push([() => { L[k].push(...maal); draw(); toast('Spændstykket er sat i sidepartiet'); }, 'Ja, også i sidepartiet']);
+      if (maal.length && !L.tb) valg.push([() => { L[k].push(...maal); L.tb = true; draw(); toast('Spændstykke, top og bund flugter med døren'); }, 'Ja, og sidepartiets top og bund i flugt med døren']);
+      if (!maal.length) valg.push([() => { L.tb = true; draw(); }, 'Sidepartiets top og bund i flugt med døren']);
+      valg.push([() => {}, maal.length ? 'Nej, kun i døren' : 'Nej tak']);
+      menuSheet('Skal spændstykket følge med over i sidepartiet?', valg);
+    };
     const addLine = (k, t) => {
-      const frs = t === 'sprosse' || t === 'spaend' ? selFields() : [];
+      const frs = t === 'sprosse' || t === 'spaend' ? selFields() : [], nye = [];
       if (frs.length) {
         for (const fr of frs) {
           const [lo, hi, a, b] = k === 'v' ? [fr[0], fr[1], fr[2], fr[3]] : [fr[2], fr[3], fr[0], fr[1]];
@@ -1350,9 +1377,11 @@ function linesEditor(p, fu) {
             const flugt = [...new Set(L[k].filter(l => l.t === 'spaend' && l.p > lo + 0.01 && l.p < hi - 0.01 && !her.some(q => Math.abs(q - l.p) < 0.003)).map(l => l.p))].sort((x2, y2) => x2 - y2);
             if (flugt.length) best = flugt[0];
           }
-          L[k].push({ p: r3(best), t, a: r3(a), b: r3(b) });
+          nye.push({ fr, l: { p: r3(best), t, a: r3(a), b: r3(b) } }); L[k].push(nye[nye.length - 1].l);
         }
-        resym(); sel.clear(); draw(); return;
+        resym(); sel.clear(); draw();
+        if (t === 'spaend' && p.type === 'dor' && !pm) spoergSideparti(k, nye);
+        return;
       }
       const pts = [0, ...L[k].map(l => l.p).sort((a, b) => a - b), 1]; let best = 0.5, gap = 0;
       for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > gap) { gap = pts[i + 1] - pts[i]; best = (pts[i] + pts[i + 1]) / 2; }
@@ -1364,6 +1393,7 @@ function linesEditor(p, fu) {
     bg.querySelector('#lAddHP').onclick = () => addLine('h', 'post');
     bg.querySelector('#lAddVS').onclick = () => addLine('v', 'sprosse');
     bg.querySelector('#lAddHS').onclick = () => addLine('h', 'sprosse');
+    if (bg.querySelector('#lTB')) bg.querySelector('#lTB').onclick = () => { L.tb = !L.tb; draw(); };
     if (bg.querySelector('#lAddVSp')) { bg.querySelector('#lAddVSp').onclick = () => addLine('v', 'spaend'); bg.querySelector('#lAddHSp').onclick = () => addLine('h', 'spaend'); }
     bg.querySelector('#lType').onclick = () => {
       const valgt = [...sel]; if (!valgt.length) return;
@@ -1445,7 +1475,7 @@ function linesEditor(p, fu) {
     bg.querySelectorAll('#lHinge button').forEach(b2 => b2.onclick = () => sideSet(o => { o.hinge = b2.dataset.h; }));
     bg.querySelector('#lBrems').onchange = e => sideSet(o => { o.brems = e.target.checked; });
     bg.querySelector('#lClear').onclick = () => { L = { v: [], h: [], fast: [], open: [], fyld: [] }; sel.clear(); selF = []; draw(); };
-    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open, fyld = L.fyld; L = normLines(detectLines(img, p.crop, p.b, p.h)); L.fast = fast; L.open = open; L.fyld = fyld; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
+    bg.querySelector('#lAuto').onclick = () => { if (img) { { const fast = L.fast, open = L.open, fyld = L.fyld, tb = L.tb; L = normLines(detectLines(img, p.crop, p.b, p.h)); L.fast = fast; L.open = open; L.fyld = fyld; if (tb) L.tb = tb; } resym(); sel.clear(); draw(); toast(`Fandt ${L.v.length + L.h.length} streger`); } };
     window.addEventListener('resize', layout);
     const done = v => { window.removeEventListener('resize', layout); bg.remove(); resolve(v); };
     bg.querySelector('#lNo').onclick = () => done(null);
@@ -1800,7 +1830,7 @@ function renderAdr() {
 }
 
 function menuSheet(title, items) {
-  const bg = document.createElement('div'); bg.className = 'sheet-bg';
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.style.zIndex = 60;
   bg.innerHTML = `<div class="sheet"><h2>${esc(title)}</h2>${items.map(([, label, cls], i) =>
     `<button class="btn ${cls || 'sec'}" data-i="${i}" style="margin:8px 0">${esc(label)}</button>`).join('')}
     <button class="btn" id="mClose" style="margin-top:14px">Luk</button></div>`;

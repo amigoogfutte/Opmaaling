@@ -138,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.6';
+const APP_VERSION = '0.7.7';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -818,6 +818,16 @@ function plainDrawing(p, maxSide) {
       x.restore();
     }
   }
+  // ventil: mørk streg i rammens overstykke, midt på den bredeste ramme i øverste række
+  if (harVentil(p) && !dor) {
+    const fr = ventFelt(p), f2 = fields.find(q => Math.abs(q.fr[0] - fr[0]) < 1e-6 && Math.abs(q.fr[1] - fr[1]) < 1e-6 && Math.abs(q.fr[2] - fr[2]) < 1e-6);
+    if (f2) {
+      const [x0, x1, y0] = f2.px, len = ventL(p) * w / (+p.b || 1000), cx = (x0 + x1) / 2, cy = y0 + gap + rw * 0.5, th = Math.max(3, rw * 0.45);
+      x.save(); x.fillStyle = '#1b1f24'; x.fillRect(cx - len / 2, cy - th / 2, len, th);
+      x.fillStyle = '#9a4b0c'; x.font = `700 ${Math.max(8, rw * 0.7)}px -apple-system, Helvetica, Arial, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'bottom';
+      x.restore();
+    }
+  }
   x.lineWidth = lw * 1.4; x.strokeRect(lw / 2, lw / 2, w - lw, h - lw);
   return c;
 }
@@ -1358,7 +1368,7 @@ function tegnFoldePlan(x, p, L, R, top, fs) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.indlaeg || '', glasOpbTxt(p), harVentil(p) ? 1 : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', dFyldOf(p), p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.indlaeg || '', glasOpbTxt(p), harVentil(p) ? ventL(p) : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', dFyldOf(p), p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1596,6 +1606,10 @@ const glasOpbTxt = p => {
 };
 const indlTxt = p => p.type === 'glas' && glasLag(p) !== 1 && INDLAEG[p.indlaeg] ? `Indlægsprofil: ${INDLAEG[p.indlaeg].toLowerCase()}` : '';
 const harSuppl = p => p.type === 'dor' && !panelMode(p) && !!p.dSuppl;
+// ventil: standard 300 mm, i spring af 100 mm, højst 100 mm kortere end rammen (bredeste ramme i øverste række)
+const ventFelt = p => { const L = applyMM(normLines(p.lines), p.b, p.h); const top = fracFields(L).filter(fr => fr[2] < 0.001); return top.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0] || [0, 1, 0, 1]; };
+const ventMax = p => { const fr = ventFelt(p); return Math.max(100, Math.floor(((fr[1] - fr[0]) * (+p.b || 1000) - 100) / 100) * 100); };
+const ventL = p => Math.min(ventMax(p), Math.max(100, +p.ventL || 300));
 const harVentil = p => p.type !== 'glas' && !!p.ventil;   // glas har ingen ventil
 const harTil = p => p.type !== 'glas' && harTil0(p);
 const harTil0 = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
@@ -1702,7 +1716,9 @@ function editPos(s, a, existing) {
     <div id="eTilWrap" class="${harTil(p) ? '' : 'hidden'}"><label class="f">Hvor?</label>
     <div class="chips" id="eSider">${SIDER.map(([k, n]) => `<button type="button" class="chip ${(p.tilSider || []).includes(k) ? 'on' : ''}" data-side="${k}">${n}</button>`).join('')}</div></div></div>
     <label class="check" id="ePladeRow"><input type="checkbox" id="ePlade" ${harPlade(p) ? 'checked' : ''}> Vindueplade</label>
- <label class="check" id="eVentilRow"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
+ <div id="eVentilRow"><label class="check"><input type="checkbox" id="eVentil" ${p.ventil ? 'checked' : ''}> Skal have ventil</label>
+    <div id="eVentLWrap" class="${p.ventil ? '' : 'hidden'}" style="display:flex;align-items:center;gap:10px;margin:4px 0 8px"><span class="muted" style="font-size:14px">Ventillængde</span>
+      <div class="stepper" style="flex:1"><button id="eVMinus" type="button">−</button><input id="eVentL" readonly value=""><button id="eVPlus" type="button">+</button></div></div></div>
     <label class="check"><input type="checkbox" id="eRaa" ${p.raa ? 'checked' : ''}> Råglas</label>
     <div id="eRaaWrap" class="${p.raa ? '' : 'hidden'}">
       <div class="raasel" id="eRaaSel"></div>
@@ -1858,6 +1874,12 @@ function editPos(s, a, existing) {
     updDor();
   });
   bg.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', () => { clearTimeout(rt); rt = setTimeout(redraw, 250); }));
+  const updVent = () => { bg.querySelector('#eVentLWrap').classList.toggle('hidden', !bg.querySelector('#eVentil').checked); bg.querySelector('#eVentL').value = `${ventL(p)} mm`; };
+  bg.querySelector('#eVentil').addEventListener('change', e => { p.ventil = e.target.checked; updVent(); redraw(); });
+  bg.querySelector('#eVMinus').onclick = () => { p.ventL = Math.max(100, ventL(p) - 100); updVent(); redraw(); };
+  bg.querySelector('#eVPlus').onclick = () => { const mx = ventMax(p); if (ventL(p) >= mx) toast(`Højst ${mx} mm – 10 cm kortere end rammen`); p.ventL = Math.min(mx, ventL(p) + 100); updVent(); redraw(); };
+  for (const id of ['#eB', '#eH']) bg.querySelector(id).addEventListener('input', () => setTimeout(updVent, 0));
+  updVent();
   bg.querySelector('#eMinus').onclick = () => { const i = bg.querySelector('#eAnt'); i.value = Math.max(1, (parseInt(i.value, 10) || 1) - 1); redraw(); };
   bg.querySelector('#ePlus').onclick = () => { const i = bg.querySelector('#eAnt'); i.value = (parseInt(i.value, 10) || 0) + 1; redraw(); };
 
@@ -2074,7 +2096,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL (${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -2119,7 +2141,7 @@ function posLines(p) {
     dorTxt(p),
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
     karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p), ...fyldLines(p),
-    harSuppl(p) ? 'Suppleringslås: JA' : '', harVentil(p) ? 'Med ventil' : '', glasOpbTxt(p), indlTxt(p),
+    harSuppl(p) ? 'Suppleringslås: JA' : '', harVentil(p) ? `Med ventil (${ventL(p)} mm)` : '', glasOpbTxt(p), indlTxt(p),
     p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
     tilTxt(p), pladeTxt(p), ...farveTxt(p),
     p.note ? 'Note: ' + p.note : ''

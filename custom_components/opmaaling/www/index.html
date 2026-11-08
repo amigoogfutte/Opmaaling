@@ -107,6 +107,8 @@
     background: var(--bg); padding: 4px 0 8px; z-index: 2; }
   .sheet-top button { border: 0; background: none; font-size: 17px; color: var(--blue); padding: 8px 4px; }
   .sheet-top button.save { font-weight: 700; }
+  .note-hl { background: #fff3b0; border-left: 4px solid #f0b400; color: #3d2f00; font-weight: 600; font-size: 14px; padding: 5px 8px; border-radius: 6px; margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
+  .note-in { background: #fffbe0 !important; border-color: #f0c840 !important; }
   .dialog-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .dialog-bg { height: 100vh; height: 100dvh; bottom: auto; }
   .dialog { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 380px; }
@@ -135,7 +137,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.3';
+const APP_VERSION = '0.7.4';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1501,7 +1503,7 @@ function renderAdr() {
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
         ${[...aabningLines(p), ...fyldLines(p)].map(t => `<div class="muted">${esc(t)}</div>`).join('')}
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
-        ${p.note ? `<div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.note)}</div>` : ''}</div>
+        ${p.note ? `<div class="note-hl">📝 ${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
     ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}`;
   $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, a, a.pos.find(p => p.id === el.dataset.p)));
@@ -1746,7 +1748,7 @@ function editPos(s, a, existing) {
       <img id="ePhoto" class="sketch hidden" alt="">
     </div>
     <label class="f">Note</label>
-    <textarea id="eNote" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
+    <textarea id="eNote" class="note-in" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
     <div class="btns" style="margin-top:14px"><button class="btn" id="eShareSk">📄 Del skitse som PDF</button></div>
     ${isNew ? '' : `<button class="btn danger" id="eDel" style="margin-top:6px">Slet position</button>`}
     <div style="position:sticky;bottom:calc(-90px - env(safe-area-inset-bottom));background:var(--bg);padding:8px 0 10px;z-index:3"><button class="btn" id="eSave2" style="margin-top:0">Gem</button></div>
@@ -2069,7 +2071,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harVentil(p) ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? ' (' + p.note + ')' : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harVentil(p) ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -2157,7 +2159,7 @@ async function makePDF(s, only, navn) {
     for (const p of a.pos) {
       const c = await makeSketch(p, 700, { utenTekst: true });
       const imgW = 78, imgH = Math.min(95, imgW * c.height / c.width), iw = imgH < imgW * c.height / c.width ? imgH * c.width / c.height : imgW;
-      const lines = posLines(p).flatMap(l => doc.setFontSize(10) && doc.splitTextToSize(l, PW - M - (M + imgW + 6)));
+      const lines = posLines(p).flatMap(l => (doc.setFont('helvetica', l.startsWith('Note: ') ? 'bold' : 'normal'), doc.setFontSize(10), doc.splitTextToSize(l, PW - M - (M + imgW + 6)).map(t2 => ({ t: t2, note: l.startsWith('Note: ') }))));
       const blockH = Math.max(imgH, 7 + lines.length * 5) + 6;
       if (y + blockH > BOT) { doc.addPage(); y = M; }
       doc.addImage(c.toDataURL('image/jpeg', 0.85), 'JPEG', M, y, iw, imgH);
@@ -2165,7 +2167,14 @@ async function makePDF(s, only, navn) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(27, 31, 36);
       doc.text(`Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`, tx, ty); ty += 7;
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-      for (const l of lines) { doc.text(l, tx, ty); ty += 5; }
+      for (const l of lines) {
+        if (l.note) {   // noter fremhæves med gul baggrund og fed skrift
+          doc.setFillColor(255, 238, 150); doc.rect(tx - 1.5, ty - 3.8, PW - M - tx + 1.5, 5, 'F');
+          doc.setFont('helvetica', 'bold'); doc.setTextColor(90, 60, 0);
+        } else { doc.setFont('helvetica', 'normal'); doc.setTextColor(27, 31, 36); }
+        doc.text(l.t, tx, ty); ty += 5;
+      }
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(27, 31, 36);
       y += blockH;
       doc.setDrawColor(223, 227, 232); doc.line(M, y - 3, PW - M, y - 3);
     }

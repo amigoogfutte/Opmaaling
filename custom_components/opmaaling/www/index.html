@@ -13,53 +13,57 @@
 <title>Vinduesopmåling</title>
 <style>
   :root {
-    --blue: #1f5fa8; --blue-d: #174a84; --bg: #f2f4f7; --card: #fff; --text: #1b1f24;
-    --muted: #6b7280; --line: #e3e6eb; --red: #c0392b; --green: #1e8e5a;
+    --blue: #1f5fa8; --blue-d: #174a84; --navy: #15365e; --bg: #f3f5f8; --card: #fff; --text: #17202b;
+    --muted: #64707f; --line: #e2e6ec; --red: #c0392b; --green: #1e8e5a;
     color-scheme: light;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--text);
-    font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
   body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
-  header { position: sticky; top: 0; z-index: 5; background: var(--blue); color: #fff;
-    padding: calc(10px + env(safe-area-inset-top)) 12px 10px; display: flex; align-items: center; gap: 8px; min-height: 56px; }
-  header h1 { font-size: 19px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  header button { background: rgba(255,255,255,.16); color: #fff; border: 0; border-radius: 10px;
-    padding: 8px 12px; font-size: 16px; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--navy); color: #fff;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px; display: flex; align-items: center; gap: 8px; min-height: 52px; }
+  header h1 { font-size: 17px; font-weight: 650; letter-spacing: -.01em; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header button { background: rgba(255,255,255,.12); color: #fff; border: 0; border-radius: 8px;
+    padding: 7px 11px; font-size: 15px; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
   main { padding: 12px; max-width: 720px; margin: 0 auto; }
-  .card { background: var(--card); border-radius: 14px; padding: 12px; margin-bottom: 10px;
-    box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .card { background: var(--card); border-radius: 10px; padding: 12px; margin-bottom: 8px;
+    border: 1px solid var(--line); }
   .row { display: flex; align-items: center; gap: 12px; }
   .grow { flex: 1; min-width: 0; }
-  .muted { color: var(--muted); font-size: 15px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .lbl { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
   .title { font-weight: 600; }
   .clickable { cursor: pointer; }
-  .clickable:active { background: #eef3fa; }
-  .thumb { width: 132px; height: 132px; object-fit: contain; border-radius: 8px; background: #fff;
+  .clickable:active { background: #f0f4f9; }
+  .clickable.row::after { content: ''; flex: none; width: 7px; height: 7px; border-right: 2px solid #b7bfca; border-top: 2px solid #b7bfca; transform: rotate(45deg); margin-left: 2px; align-self: center; }
+  .thumb { width: 116px; height: 116px; object-fit: contain; border-radius: 6px; background: #fff;
     border: 1px solid var(--line); flex: none; align-self: flex-start; }
   @media (min-width: 600px) { .thumb { width: 180px; height: 180px; } }
-  .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 5px; margin: 0 4px 2px 0;
     background: #e6eef8; color: var(--blue-d); }
   .tag.glas { background: #e5f5ee; color: #17694a; }
   .tag.dor { background: #f6ecdc; color: #7a4f12; }
-  .summary .card b { font-size: 24px; }
-  .summary { display: flex; gap: 10px; margin-bottom: 10px; }
-  .summary .card { flex: 1; text-align: center; margin: 0; }
-  .summary b { display: block; font-size: 26px; color: var(--blue); }
-  .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 17px;
+  .summary { display: flex; margin-bottom: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .summary .card { flex: 1; text-align: center; margin: 0; border: 0; border-radius: 0; padding: 8px 4px; background: none; }
+  .summary .card + .card { border-left: 1px solid var(--line); }
+  .summary b { display: block; font-size: 20px; line-height: 1.2; color: var(--navy); }
+  .summary .muted { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 9px; padding: 13px; font-size: 16px;
     font-weight: 600; background: var(--blue); color: #fff; }
   .btn:active { background: var(--blue-d); }
-  .btn.sec { background: #e6eef8; color: var(--blue-d); }
-  .btn.danger { background: #fbeaea; color: var(--red); }
-  .btn.small { padding: 10px; font-size: 15px; }
+  .btn.sec { background: #fff; color: var(--blue-d); box-shadow: inset 0 0 0 1px #cdd6e2; }
+  .btn.sec:active { background: #eef3f9; }
+  .btn.danger { background: #fff; color: var(--red); box-shadow: inset 0 0 0 1px #ecc4bf; }
+  .btn.small { padding: 9px 10px; font-size: 14.5px; }
   .btns { display: flex; gap: 8px; margin: 8px 0; }
   .btns .btn { flex: 1; }
   .fab { position: fixed; left: 12px; right: 12px; width: auto; bottom: calc(14px + env(safe-area-inset-bottom));
-    max-width: 696px; margin: 0 auto; z-index: 6; box-shadow: 0 4px 14px rgba(31,95,168,.35); }
+    max-width: 696px; margin: 0 auto; z-index: 6; box-shadow: 0 6px 18px rgba(21,54,94,.28); }
   .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
-  label.f { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 4px; }
+  label.f { display: block; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 5px; }
   input[type=text], input[type=number], input[inputmode], textarea, select.farve {
-    width: 100%; font-size: 18px; padding: 12px; border: 1px solid #cfd5dd; border-radius: 10px; background: #fff;
+    width: 100%; font-size: 17px; padding: 11px 12px; border: 1px solid #cfd5dd; border-radius: 8px; background: #fff;
     font-family: inherit; color: var(--text); }
   select.farve { -webkit-appearance: none; appearance: none; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23667' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right: 32px; }
   textarea { min-height: 70px; resize: vertical; }
@@ -68,24 +72,27 @@
   .mm span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
   .two { display: flex; gap: 10px; }
   .two > div { flex: 1; }
-  .seg { display: flex; background: #e8ebf0; border-radius: 11px; padding: 3px; }
-  .seg button { flex: 1; border: 0; background: transparent; padding: 10px; font-size: 16px; border-radius: 9px; color: var(--text); }
+  .seg { display: flex; background: #e6e9ee; border-radius: 9px; padding: 3px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 9px 6px; font-size: 15px; border-radius: 7px; color: var(--text); }
   .seg.small button { padding: 8px 4px; font-size: 14px; }
   .seg button.on { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   .stepper { display: flex; align-items: center; gap: 0; }
-  .stepper button { width: 52px; height: 50px; font-size: 24px; border: 1px solid #cfd5dd; background: #fff; color: var(--blue); }
-  .stepper button:first-child { border-radius: 10px 0 0 10px; }
-  .stepper button:last-child { border-radius: 0 10px 10px 0; }
-  .check { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #cfd5dd; border-radius: 10px;
-    padding: 9px 12px; margin-top: 8px; font-size: 15px; cursor: pointer; user-select: none; -webkit-user-select: none; }
-  .check input { width: 22px; height: 22px; margin: 0; accent-color: var(--blue); }
+  .stepper button { width: 50px; height: 46px; font-size: 22px; border: 1px solid #cfd5dd; background: #fff; color: var(--blue); }
+  .stepper button:first-child { border-radius: 8px 0 0 8px; }
+  .stepper button:last-child { border-radius: 0 8px 8px 0; }
+  .check { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #d5dbe3; border-radius: 8px;
+    padding: 8px 12px; margin-top: 6px; font-size: 15px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .check input { width: 20px; height: 20px; margin: 0; accent-color: var(--blue); }
+  .pos { align-items: flex-start; }
+  .pos .muted { font-size: 13px; line-height: 1.35; }
+  .pos .title { margin-bottom: 3px; }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
   .tag.suppl { background: #c0392b; color: #fff; }
   .tag.raa { background: #ece8fb; color: #4c3a99; }
   .check.small { font-size: 15px; padding: 9px 12px; margin-top: 8px; }
   .check.small input { width: 22px; height: 22px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 8px; }
-  .chip { border: 1px solid #cfd5dd; background: #fff; color: var(--text); border-radius: 99px; padding: 10px 16px; font-size: 16px; }
+  .chip { border: 1px solid #cfd5dd; background: #fff; color: var(--text); border-radius: 8px; padding: 8px 13px; font-size: 15px; }
   .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
   .raasel { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #cfd5dd; border-radius: 10px;
     padding: 8px 12px; margin-top: 8px; cursor: pointer; min-height: 56px; }
@@ -100,13 +107,13 @@
   .raatile .ph { aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: repeating-linear-gradient(45deg, #e9eef4 0 6px, #f6f8fb 6px 12px);
     display: flex; align-items: center; justify-content: center; color: #9aa4b2; font-size: 22px; }
   .raatile .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; height: 50px; }
-  .sketch { width: 100%; border-radius: 10px; border: 1px solid var(--line); background: #fff; display: block; }
+  .stepper input { border-radius: 0; text-align: center; border-left: 0; border-right: 0; height: 46px; }
+  .sketch { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #fff; display: block; }
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
   .sheet { background: var(--bg); width: 100%; max-width: 720px; max-height: 94vh; max-height: calc(100dvh - 20px); overflow-y: auto;
-    border-radius: 18px 18px 0 0; padding: 14px 14px calc(90px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
-  .sheet h2 { margin: 2px 0 6px; font-size: 20px; }
-  .sheet-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: -14px;
+    border-radius: 14px 14px 0 0; padding: 12px 14px calc(90px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+  .sheet h2 { margin: 2px 0 6px; font-size: 18px; }
+  .sheet-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: -12px;
     background: var(--bg); padding: 4px 0 8px; z-index: 2; }
   .sheet-top button { border: 0; background: none; font-size: 17px; color: var(--blue); padding: 8px 4px; }
   .sheet-top button.save { font-weight: 700; }
@@ -114,16 +121,16 @@
   .note-in { background: #fffbe0 !important; border-color: #f0c840 !important; }
   .dialog-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .dialog-bg { height: 100vh; height: 100dvh; bottom: auto; }
-  .dialog { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 380px; }
+  .dialog { background: #fff; border-radius: 12px; padding: 18px; width: 100%; max-width: 380px; }
   .dialog p { margin: 0 0 12px; }
   .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + env(safe-area-inset-bottom));
-    background: #222; color: #fff; padding: 10px 16px; border-radius: 99px; z-index: 50; font-size: 15px; }
+    background: #1d2733; color: #fff; padding: 9px 15px; border-radius: 8px; z-index: 50; font-size: 15px; }
   .photo-btns { display: flex; gap: 8px; }
   .photo-btns label { flex: 1; text-align: center; }
   .hidden { display: none !important; }
   .warn { background: #fff7e0; border: 1px solid #f1d27a; color: #6b5300; font-size: 14px; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
   textarea.copy { font-size: 13px; min-height: 200px; }
-  .syncbar { font-size: 14px; padding: 9px 12px; border-radius: 10px; margin-bottom: 10px; cursor: pointer; }
+  .syncbar { font-size: 13px; padding: 7px 12px; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
   .syncbar.ok { background: #e5f5ee; color: #17694a; }
   .syncbar.busy { background: #eef1f5; color: #4b5563; }
   .syncbar.offline { background: #eef1f5; color: #4b5563; }
@@ -140,7 +147,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '1.0.10';
+const APP_VERSION = '1.1.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -194,7 +201,11 @@ function save(skipSync) {
   clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set(data), 150);
   if (!skipSync) scheduleSync(2500);
 }
-const touch = s => { s.updated = Date.now(); if (data.firma) s.firma = data.firma; if (data.firmaLogo !== undefined) { s.firmaLogo = data.firmaLogo; s.kunLogo = !!data.kunLogo; } };
+const touch = s => {
+  s.updated = Date.now();
+  if (HA) { delete s.firma; delete s.firmaLogo; delete s.kunLogo; return; }   // firma og logo ligger på serveren
+  if (data.firma) s.firma = data.firma; if (data.firmaLogo !== undefined) { s.firmaLogo = data.firmaLogo; s.kunLogo = !!data.kunLogo; }
+};
 // logo og "kun logo" følger også med sagerne til andre enheder, hvis det ikke er sat her
 const nyesteSag = k => [...(data.sager || [])].filter(s => s[k] !== undefined).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
 // firma fra Home Assistant (styres af administratorer) vinder over det lokale
@@ -211,8 +222,10 @@ async function sendFirma() {
 }
 async function hentFirma() {
   try {
-    const r = await api('firma'); if (!r.ok) return false;
+    const kendt = data.serverFirma && data.serverFirma.updated;
+    const r = await api('firma' + (kendt ? '?v=' + encodeURIComponent(kendt) : '')); if (!r.ok) return false;
     const f = await r.json(), før = JSON.stringify(data.serverFirma || {});
+    if (f.uendret) { if (data.firmaVent && mig && mig.admin) { data.firmaVent = false; await sendFirma(); } return false; }
     if (mig && mig.admin && !(f.navn || f.logo) && (data.firma || data.firmaLogo)) {   // første gang: send det lokale firma op
       data.serverFirma = { navn: firmaNavnLokal(), logo: data.firmaLogo || '', kunLogo: !!data.kunLogo, ...(f.levAdr || data.levAdr ? { levAdr: f.levAdr || data.levAdr } : {}), updated: Date.now() }; await sendFirma(); return true;
     }
@@ -231,7 +244,7 @@ function retFirma() {
       <label class="f">Firmanavn (står på PDF)</label><input type="text" id="fiNavn" value="${esc(firmaNavn())}" placeholder="Fx Jensens Vinduer ApS">
       <label class="f">Logo</label>
       <div id="fiPrev" style="background:#fff;border:1px solid #dfe3e8;border-radius:10px;min-height:60px;display:flex;align-items:center;justify-content:center;padding:8px"></div>
-      <div class="btns" style="margin-top:8px"><button class="btn sec small" id="fiVaelg">🖼 Vælg logo</button><button class="btn danger small" id="fiFjern">Fjern logo</button></div>
+      <div class="btns" style="margin-top:8px"><button class="btn sec small" id="fiVaelg">Vælg logo</button><button class="btn danger small" id="fiFjern">Fjern logo</button></div>
       <input type="file" id="fiFil" accept="image/*" class="hidden">
       <label class="check" id="fiKunRow" style="margin-top:8px"><input type="checkbox" id="fiKun"> Vis kun logoet på PDF (ikke navnet)</label>
       <div class="btns" style="margin-top:12px"><button class="btn sec" id="fiNo">Annuller</button><button class="btn" id="fiOk">Gem</button></div></div>`;
@@ -1244,7 +1257,7 @@ function linesEditor(p, fu) {
       const nf = selFields().length;
       bg.querySelector('#lDel').disabled = !n && !nf; bg.querySelector('#lType').disabled = !n;
       bg.querySelector('#lDel').textContent = n ? (n > 1 ? `Fjern valgte (${n})` : 'Fjern valgt') : nf ? `Fjern sprosser i ramme${nf > 1 ? 'r' : ''}` : 'Fjern valgt';
-      const frs = selFields(), alleFast = frs.length && frs.every(fr => isFast(L, fr));
+      const frs = selFields();
       bg.querySelector('#lOpenRow').classList.toggle('hidden', !nf);
       if (pm) { bg.querySelector('#lOpen').classList.add('hidden'); bg.querySelector('#lOpen').previousElementSibling.classList.add('hidden'); }
       if (nf) {
@@ -1661,9 +1674,9 @@ const kanDele = s => mig && (mig.admin || (s.ejer && s.ejer === mig.id) || !s.ej
 const kanSlette = s => !HA || !mig || kanDele(s);
 const delingTxt = s => {
   if (!mig) return '';
-  if (s.ejer && s.ejer !== mig.id) return `👥 Oprettet af ${brugerNavn(s.ejer)}`;
+  if (s.ejer && s.ejer !== mig.id) return `Oprettet af ${brugerNavn(s.ejer)}`;
   const d = (s.delt || []).filter(id => id !== mig.id);
-  return d.length ? `👥 Delt med ${d.map(brugerNavn).join(', ')}` : '';
+  return d.length ? `Delt med ${d.map(brugerNavn).join(', ')}` : '';
 };
 async function delSag(s) {
   await hentBrugere();
@@ -1685,10 +1698,10 @@ function sagCard(s) {
   const t = totals(s), n = (s.adresser || []).length;
   const adrNavne = (s.adresser || []).map(a => a.adresse).filter(Boolean);
   return `<div class="card clickable row" data-id="${s.id}">
-    <div class="grow"><div class="title">${esc(sagLabel(s))}${s.navn ? ' · ' + esc(s.navn) : ''}</div>
+    <div class="grow"><div class="title">${esc(sagLabel(s))}${s.navn ? ` <span style="font-weight:400;color:var(--muted)">· ${esc(s.navn)}</span>` : ''}</div>
     <div class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${n} adresse${n === 1 ? '' : 'r'}${adrNavne.length ? ': ' + esc(adrNavne.join(', ')) : ''}</div>
-    <div class="muted">${s.arkiveret ? 'Arkiveret ' + fmtDato(s.arkiveretDato) : 'Oprettet ' + fmtDato(s.oprettet)}</div>${delingTxt(s) ? `<div style="font-size:13px;color:#1f5fa8">${esc(delingTxt(s))}</div>` : ''}</div>
-    <div style="text-align:right;flex:none"><div><b>${t.v}</b> <span class="muted">vinduer</span></div>
+    <div class="muted" style="font-size:12.5px">${s.arkiveret ? 'Arkiveret ' + fmtDato(s.arkiveretDato) : 'Oprettet ' + fmtDato(s.oprettet)}${delingTxt(s) ? ` · <span style="color:var(--blue)">${esc(delingTxt(s))}</span>` : ''}</div></div>
+    <div style="text-align:right;flex:none"><div><b>${t.v}</b> <span class="muted">${t.v === 1 ? 'vindue' : 'vinduer'}</span></div>
     <div><b>${t.g}</b> <span class="muted">glas</span></div>${t.d ? `<div><b>${t.d}</b> <span class="muted">${t.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`;
 }
 const matchSag = (s, q) => !q || [s.nr, s.navn, s.lev, ...(s.adresser || []).map(a => a.adresse)].join(' ').toLowerCase().includes(q.toLowerCase());
@@ -1707,14 +1720,14 @@ const searchHTML = ph => `<input type="text" id="q" placeholder="${ph}" style="m
 function renderHome() {
   $('#hdr').innerHTML = `<h1>Sager</h1><button id="arkBtn">Arkiv</button><button id="more">•••</button>`;
   $('#more').onclick = () => menuSheet('Menu', [
-    ...(kanRetteFirma() ? [[retLevAdr, '🚚 Leveringsadresser'], [retFirma, '🏢 Firma og logo']] : []),
-    [openBackup, '💾 Backup'],
+    ...(kanRetteFirma() ? [[retLevAdr, 'Leveringsadresser'], [retFirma, 'Firma og logo']] : []),
+    [openBackup, 'Backup'],
   ]);
   $('#arkBtn').onclick = () => { view = { name: 'arkiv' }; render(); };
   const list = liveSager().filter(s => !s.arkiveret).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
-    `<div class="card row" style="padding:9px 12px;margin-bottom:10px"><div class="grow"><div class="muted" style="font-size:12.5px">Firma</div><div style="font-weight:600">${firmaLogo() ? `<img src="${firmaLogo()}" style="max-height:34px;max-width:100%;display:block;margin:2px 0">` : ''}${firmaLogo() && kunLogo() ? '' : firmaNavn() ? esc(firmaNavn()) : firmaLogo() ? '' : (kanRetteFirma() ? '<span style="color:#c0392b">Ikke angivet – tryk Ret</span>' : '<span class="muted">Ikke angivet</span>')}</div></div>
-      ${kanRetteFirma() ? `<button class="btn sec small" id="retFirma" style="width:auto;padding:8px 14px">✏️ Ret</button>` : ''}</div>` +
+    `<div class="card row" style="padding:9px 12px;margin-bottom:10px"><div class="grow"><div class="lbl">Firma</div><div style="font-weight:600">${firmaLogo() ? `<img src="${firmaLogo()}" style="max-height:34px;max-width:100%;display:block;margin:2px 0">` : ''}${firmaLogo() && kunLogo() ? '' : firmaNavn() ? esc(firmaNavn()) : firmaLogo() ? '' : (kanRetteFirma() ? '<span style="color:#c0392b">Ikke angivet – tryk Ret</span>' : '<span class="muted">Ikke angivet</span>')}</div></div>
+      ${kanRetteFirma() ? `<button class="btn sec small" id="retFirma" style="width:auto;padding:7px 14px">Ret</button>` : ''}</div>` +
     (list.length > 4 ? searchHTML('Søg sagsnummer, kunde eller adresse') : '') + `<div id="sagList"></div>`;
   if ($('#retFirma')) $('#retFirma').onclick = retFirma;
   sagListe(list, `<div class="empty">Ingen aktive sager.<br>Tryk på <b>Ny sag</b> for at starte.</div>`, 'home');
@@ -1759,21 +1772,21 @@ function renderSag() {
   const adrs = s.adresser || [];
   $('#main').innerHTML = syncBarHTML() +
     (s.arkiveret ? `<div class="warn" style="display:flex;align-items:center;gap:10px"><span class="grow">Arkiveret ${fmtDato(s.arkiveretDato)}</span><button class="btn small" id="reopen" style="width:auto;padding:8px 14px">Genåbn</button></div>` : '') +
-    `<div class="card row" style="padding:10px 12px"><div class="grow"><div class="muted" style="font-size:13px">Sagsnummer</div>
-      <div class="title" style="font-size:19px">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted">${esc(s.navn)}</div>` : ''}
-      <div style="font-size:14px;margin-top:4px">🚚 Leveres: ${s.lev ? esc(s.lev) : '<span style="color:#c0392b">ikke angivet – tryk Ret</span>'}</div>
-      ${delingTxt(s) ? `<div style="font-size:14px;margin-top:4px;color:#1f5fa8">${esc(delingTxt(s))}</div>` : ''}</div>
-      <div style="display:flex;flex-direction:column;gap:6px"><button class="btn sec small" id="retSag" style="width:auto;padding:10px 16px">✏️ Ret</button>
-      ${HA && kanDele(s) ? `<button class="btn sec small" id="delSag" style="width:auto;padding:10px 16px">👥 Del</button>` : ''}</div></div>` + `
-    <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
-    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div><div class="card"><b>${t.d}</b><span class="muted">døre i alt</span></div></div>
+    `<div class="card" style="padding:12px"><div class="row" style="align-items:flex-start"><div class="grow"><div class="lbl">Sagsnummer</div>
+      <div class="title" style="font-size:19px;letter-spacing:-.01em">${esc(s.nr || '–')}</div>${s.navn ? `<div class="muted" style="font-size:15px">${esc(s.navn)}</div>` : ''}</div>
+      <div style="display:flex;gap:6px"><button class="btn sec small" id="retSag" style="width:auto;padding:7px 14px">Ret</button>
+      ${HA && kanDele(s) ? `<button class="btn sec small" id="delSag" style="width:auto;padding:7px 14px">Del</button>` : ''}</div></div>
+      <div style="border-top:1px solid var(--line);margin:10px -12px 0;padding:8px 12px 0;font-size:14px"><span class="lbl" style="margin-right:6px">Levering</span>${s.lev ? esc(s.lev) : '<span style="color:#c0392b">ikke angivet – tryk Ret</span>'}</div>
+      ${delingTxt(s) ? `<div style="font-size:13px;margin-top:4px;color:var(--blue)">${esc(delingTxt(s))}</div>` : ''}</div>` + `
+    <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">Vinduer</span></div>
+    <div class="card"><b>${t.g}</b><span class="muted">Glas</span></div><div class="card"><b>${t.d}</b><span class="muted">Døre</span></div></div>
     ${adrs.length ? '' : `<div class="empty">Ingen adresser endnu.<br>Tryk på <b>Tilføj adresse</b>.</div>`}
     ${adrs.map(a => { const ta = totalsP(a.pos); return `
       <div class="card clickable row" data-a="${a.id}">
-        <div class="grow"><div class="title">${esc(a.adresse)}</div><div class="muted">${a.pos.length} pos.</div></div>
-        <div style="text-align:right;flex:none"><div><b>${ta.v}</b> <span class="muted">vinduer</span></div>
+        <div class="grow"><div class="title">${esc(a.adresse)}</div><div class="muted" style="font-size:13px">${a.pos.length} ${a.pos.length === 1 ? 'position' : 'positioner'}</div></div>
+        <div style="text-align:right;flex:none"><div><b>${ta.v}</b> <span class="muted">${ta.v === 1 ? 'vindue' : 'vinduer'}</span></div>
         <div><b>${ta.g}</b> <span class="muted">glas</span></div>${ta.d ? `<div><b>${ta.d}</b> <span class="muted">${ta.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`; }).join('')}
-    ${allPos(s).length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del hele sagen som PDF</button></div>` : ''}
+    ${allPos(s).length ? `<div class="btns"><button class="btn" id="shareTxt">Del hele sagen som PDF</button></div>` : ''}
     ${s.arkiveret ? '' : `<button class="btn sec" id="arkiver" style="margin-top:16px">Arkivér sag</button>`}`;
   $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
   if (allPos(s).length) { $('#shareTxt').onclick = () => sharePDF(s); }
@@ -1798,18 +1811,18 @@ function renderAdr() {
   $('#back').onclick = () => { view = { ...view, name: 'sag' }; render(); };
   $('#more').onclick = () => adrMenu(s, a);
   $('#main').innerHTML = syncBarHTML() + `
-    <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">vinduer i alt</span></div>
-    <div class="card"><b>${t.g}</b><span class="muted">glas i alt</span></div><div class="card"><b>${t.d}</b><span class="muted">døre i alt</span></div></div>
+    <div class="summary"><div class="card"><b>${t.v}</b><span class="muted">Vinduer</span></div>
+    <div class="card"><b>${t.g}</b><span class="muted">Glas</span></div><div class="card"><b>${t.d}</b><span class="muted">Døre</span></div></div>
     ${a.pos.length ? '' : `<div class="empty">Ingen positioner endnu.<br>Tryk på <b>Tilføj vindue/glas</b>.</div>`}
     <div id="posList">${a.pos.map(p => `
-      <div class="card clickable row" data-p="${p.id}">
+      <div class="card clickable row pos" data-p="${p.id}">
         <img class="thumb" data-thumb="${p.id}" alt="">
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
         <div><span class="tag ${p.type === 'glas' ? 'glas' : p.type === 'dor' ? 'dor' : ''}">${typeNavn(p)}</span>${matTxt(p) ? `<span class="tag">${matTxt(p)}</span>` : ''}
         ${harVentil(p) ? '<span class="tag ventil">Ventil</span>' : ''}${harSuppl(p) ? '<span class="tag suppl">🔒 Suppleringslås</span>' : ''}
         ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(raaNavn(p.raaType)) : ''}</span>` : ''}
-        <span style="margin-left:6px">${p.antal} stk</span></div>
-        <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
+        <span style="font-size:13.5px;font-weight:600">${p.antal} stk</span></div>
+        <div style="font-size:14.5px;font-weight:600;margin:1px 0 2px">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
         ${dorTxt(p) ? `<div class="muted">${dorTxt(p)}</div>` : ''}
         ${karmTxt(p) ? `<div class="muted">${karmTxt(p)}</div>` : ''}
         ${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
@@ -1819,9 +1832,9 @@ function renderAdr() {
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
         ${[...aabningLines(p), ...fyldLines(p)].map(t => `<div class="muted">${esc(t)}</div>`).join('')}
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
-        ${p.note ? `<div class="note-hl">📝 ${esc(p.note)}</div>` : ''}</div>
+        ${p.note ? `<div class="note-hl">Note: ${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
-    ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del som PDF</button></div>` : ''}`;
+    ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">Del som PDF</button></div>` : ''}`;
   $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, a, a.pos.find(p => p.id === el.dataset.p)));
   if (a.pos.length) { $('#shareTxt').onclick = () => sharePDF(s, a); }
   $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas/dør</button>`;
@@ -1882,7 +1895,7 @@ function retLevAdr() {
   let liste = [...levAdresser()];
   const bg = document.createElement('div'); bg.className = 'dialog-bg';
   const tegn = () => {
-    bg.innerHTML = `<div class="dialog" style="max-width:440px;width:100%"><div style="font-weight:700;font-size:18px;margin-bottom:8px">🚚 Leveringsadresser</div>
+    bg.innerHTML = `<div class="dialog" style="max-width:440px;width:100%"><div style="font-weight:700;font-size:18px;margin-bottom:8px">Leveringsadresser</div>
       <div class="muted" style="font-size:14px;margin-bottom:8px">Kan vælges, når man opretter en sag. "Anden adresse" kan altid vælges.</div>
       ${liste.length ? liste.map((a, i) => `<div class="row" style="gap:8px;margin:6px 0"><div class="grow" style="padding:10px 12px;background:#f3f5f8;border-radius:10px">${esc(a)}</div><button class="btn danger small" data-del="${i}" style="width:auto;padding:8px 12px">✕</button></div>`).join('') : '<div class="muted">Ingen adresser endnu.</div>'}
       <label class="f">Ny adresse</label><div class="row" style="gap:8px"><input type="text" id="laNy" class="grow" placeholder="Fx Industrivej 3, 5000 Odense"><button class="btn sec small" id="laAdd" style="width:auto;padding:10px 14px">Tilføj</button></div>
@@ -2126,13 +2139,13 @@ function editPos(s, a, existing) {
 
     <label class="f">Billede</label>
     <div class="photo-btns">
-      <label class="btn sec small" for="fileCam">📷 Tag billede</label>
-      <label class="btn sec small" for="fileLib">🖼 Vælg billede</label>
+      <label class="btn sec small" for="fileCam">Tag billede</label>
+      <label class="btn sec small" for="fileLib">Vælg billede</label>
     </div>
     <div id="eSkWrap" style="margin-top:10px">
       <canvas class="sketch" id="eSketch"></canvas>
       <div class="seg hidden" id="eVis" style="margin-top:8px"><button data-v="tegning">Tegning</button><button data-v="foto">Foto-skitse</button></div>
-      <button class="btn sec small" id="eLines" style="margin-top:8px">✏️ Tegn poster og sprosser</button>
+      <button class="btn sec small" id="eLines" style="margin-top:8px">Tegn poster og sprosser</button>
       <div class="btns hidden" id="ePhotoBtns">
         <button class="btn sec small" id="eCrop">Markér vinduet</button>
         <button class="btn sec small" id="eToggle">Vis foto</button>
@@ -2142,7 +2155,7 @@ function editPos(s, a, existing) {
     </div>
     <label class="f">Note</label>
     <textarea id="eNote" class="note-in" placeholder="Fx åbner indad, 2. sal …">${esc(p.note)}</textarea>
-    <div class="btns" style="margin-top:14px"><button class="btn" id="eShareSk">📄 Del skitse som PDF</button></div>
+    <div class="btns" style="margin-top:14px"><button class="btn sec" id="eShareSk">Del skitse som PDF</button></div>
     ${isNew ? '' : `<button class="btn danger" id="eDel" style="margin-top:6px">Slet position</button>`}
     <div style="position:sticky;bottom:calc(-90px - env(safe-area-inset-bottom));background:var(--bg);padding:8px 0 10px;z-index:3"><button class="btn" id="eSave2" style="margin-top:0">Gem</button></div>
   </div>`;
@@ -2581,10 +2594,6 @@ function listText(s, only) {
   }
   return out;
 }
-async function copyText(txt) {
-  try { await navigator.clipboard.writeText(txt); toast('Kopieret'); }
-  catch (e) { showCopyBox(txt); }
-}
 function showCopyBox(txt) {
   const bg = document.createElement('div'); bg.className = 'sheet-bg';
   bg.innerHTML = `<div class="sheet"><h2>Kopiér teksten</h2><p class="muted">Markér teksten og vælg Kopiér.</p>
@@ -2723,43 +2732,6 @@ async function sharePDF(s, only, navn) {
   bg.querySelector('#pdfClose').onclick = close;
   const sh = bg.querySelector('#pdfShare'); if (sh) sh.onclick = async () => { if (await del()) close(); };
   bg.querySelector('a[download]').addEventListener('click', () => setTimeout(() => toast('PDF gemt i Overførsler'), 300));
-}
-async function shareText(s, only) {
-  const txt = listText(s, only);
-  const adrs = only ? [only] : (s.adresser || []);
-  if (navigator.share) {
-    try {
-      // Prøv at dele tekst + skitser
-      const files = [];
-      if (navigator.canShare) {
-        for (const [ai, a] of adrs.entries()) for (const p of a.pos) {
-          const c = await makeSketch(p, 900);
-          const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
-          if (blob) files.push(new File([blob], `${adrs.length > 1 ? 'adr' + (ai + 1) + '-' : ''}pos-${p.nr}.jpg`, { type: 'image/jpeg' }));
-        }
-      }
-      const withFiles = files.length && navigator.canShare({ files, text: txt });
-      if (withFiles) {
-        const choice = await dialog({ text: 'Skal skitserne sendes med?', ok: 'Ja, med skitser', cancel: 'Kun tekst' });
-        if (choice) { await navigator.share({ title: sagLabel(s), text: txt, files }); return; }
-      }
-      await navigator.share({ title: sagLabel(s), text: txt }); return;
-    } catch (e) { if (e && e.name === 'AbortError') return; }
-  }
-  copyText(txt);
-}
-async function shareSketch(s, p, a) {
-  const c = await makeSketch(p, 1000);
-  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
-  const file = blob && new File([blob], `pos-${p.nr}.jpg`, { type: 'image/jpeg' });
-  if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: `Pos. ${p.nr}` }); return; } catch (e) { if (e.name === 'AbortError') return; }
-  }
-  // Reserve: vis billedet, så det kan gemmes med et langt tryk
-  const bg = document.createElement('div'); bg.className = 'sheet-bg';
-  bg.innerHTML = `<div class="sheet"><h2>Skitse</h2><p class="muted">Hold fingeren på billedet for at gemme eller dele det.</p>
-    <img class="sketch" src="${c.toDataURL('image/jpeg', 0.9)}"><button class="btn" style="margin-top:10px">Luk</button></div>`;
-  document.body.appendChild(bg); bg.querySelector('button').onclick = () => bg.remove();
 }
 
 /* ============ Backup ============ */

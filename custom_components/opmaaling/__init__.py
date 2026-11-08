@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import threading
 from pathlib import Path
 
 from aiohttp import web
@@ -29,6 +30,33 @@ class Store:
     def __init__(self, root: str) -> None:
         self.sager = Path(root) / "sager"
         self.fotos = Path(root) / "fotos"
+        # oversigt over sagerne (id -> updated, deleted, ejer, delt, billeder), så alle filer ikke skal læses hvert minut
+        self._indeks: dict[str, dict] | None = None
+        self._laas = threading.RLock()
+
+    @staticmethod
+    def _kort(d: dict) -> dict:
+        ids: set[str] = set()
+        _find_foto_ids(d, ids)
+        return {"id": d.get("id"), "updated": d.get("updated", 0), "deleted": bool(d.get("deleted")),
+                "ejer": d.get("ejer"), "delt": d.get("delt") or [], "fotos": ids}
+
+    def _oversigt(self) -> dict[str, dict]:
+        with self._laas:
+            return self._byg()
+
+    def _byg(self) -> dict[str, dict]:
+        if self._indeks is None:
+            self._indeks = {}
+            for f in self.sager.glob("*.json"):
+                try:
+                    d = json.loads(f.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    _LOGGER.warning("Kunne ikke læse %s", f)
+                    continue
+                if isinstance(d, dict) and d.get("id"):
+                    self._indeks[d["id"]] = self._kort(d)
+        return self._indeks
 
     def ensure(self) -> None:
         self.sager.mkdir(parents=True, exist_ok=True)
@@ -40,19 +68,10 @@ class Store:
         tmp.write_bytes(data)
         os.replace(tmp, path)
 
-    def _alle(self) -> list[dict]:
-        out = []
-        for f in self.sager.glob("*.json"):
-            try:
-                out.append(json.loads(f.read_text(encoding="utf-8")))
-            except (OSError, ValueError):
-                _LOGGER.warning("Kunne ikke læse %s", f)
-        return out
-
     def list_sager(self, user) -> list[dict]:
         return [
-            {"id": d.get("id"), "updated": d.get("updated", 0), "deleted": bool(d.get("deleted"))}
-            for d in self._alle()
+            {"id": d["id"], "updated": d["updated"], "deleted": d["deleted"]}
+            for d in list(self._oversigt().values())
             if adgang(user, d)
         ]
 
@@ -67,6 +86,10 @@ class Store:
 
     def put_sag(self, sag_id: str, obj: dict, user) -> tuple[int, dict | None]:
         """Gem en sag. Returnerer (status, data): 200 ok, 409 konflikt (nyere findes), 403 ingen adgang."""
+        with self._laas:
+            return self._put_sag(sag_id, obj, user)
+
+    def _put_sag(self, sag_id: str, obj: dict, user) -> tuple[int, dict | None]:
         f = self.sager / f"{sag_id}.json"
         cur = self.read_sag(sag_id)
         if cur is not None:
@@ -88,6 +111,7 @@ class Store:
         delt = obj.get("delt")
         obj["delt"] = [u for u in delt if isinstance(u, str)][:50] if isinstance(delt, list) else []
         self._write(f, json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+        self._oversigt()[sag_id] = self._kort(obj)
         return 200, {"ejer": obj.get("ejer"), "delt": obj["delt"]}
 
     def fotos_med_adgang(self, user) -> set[str] | None:
@@ -95,9 +119,9 @@ class Store:
         if user.is_admin:
             return None
         ids: set[str] = set()
-        for d in self._alle():
+        for d in list(self._oversigt().values()):
             if adgang(user, d):
-                _find_foto_ids(d, ids)
+                ids |= d["fotos"]
         return ids
 
     def get_firma(self) -> dict:
@@ -255,7 +279,12 @@ class FirmaView(_Base):
     name = "api:opmaaling:firma"
 
     async def get(self, request: web.Request) -> web.Response:
-        return self.json(await self.hass.async_add_executor_job(self.store.get_firma))
+        f = await self.hass.async_add_executor_job(self.store.get_firma)
+        # appen sender den udgave, den allerede har; er den uændret, sendes logoet ikke igen
+        v = request.query.get("v")
+        if v and f.get("updated") and str(f.get("updated")) == v:
+            return self.json({"uendret": True})
+        return self.json(f)
 
     async def put(self, request: web.Request) -> web.Response:
         if not request["hass_user"].is_admin:

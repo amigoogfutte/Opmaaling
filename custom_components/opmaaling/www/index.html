@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.5';
+const APP_VERSION = '0.8.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1609,7 +1609,7 @@ const INDLAEG = { alu: 'Aluminium', sort: 'Sort', lysgraa: 'Lysgrå' };
 // glastype pr. glas: float er standard
 const GLASTYPE = { float: 'Float', haerdet: 'Hærdet', lamineret: 'Lamineret', andet: 'Andet' };
 const gTypeNavn = (p, k) => { const t = p['gT' + k]; return t === 'andet' ? (p['gA' + k] || 'andet') : t && t !== 'float' ? GLASTYPE[t].toLowerCase() : ''; };
-const LAM_MM = 0.35;   // lamineret glas: folien gør glasset 0,35 mm tykkere
+const LAM_MM = 0.38;   // lamineret glas: folien gør glasset 0,38 mm tykkere
 const fmtDec = n => Number((+n).toFixed(2)).toLocaleString('da-DK');
 // forklaring vises kun i appen (ikke i PDF)
 const lamNote = p => { if (p.type !== 'glas') return ''; const lag = glasLag(p), ks = lag === 1 ? ['Ud'] : lag === 3 ? ['Ud', 'Mid', 'Ind'] : ['Ud', 'Ind'];

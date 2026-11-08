@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.1';
+const APP_VERSION = '0.9.2';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1744,7 +1744,7 @@ function editPos(s, a, existing) {
   const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: allPos(s).reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', mat: last ? last.mat || '' : '', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, symP: true, symS: true,
+    rum: '', type: last ? last.type : 'vindue', mat: (allPos(s).filter(q => q.mat).slice(-1)[0] || {}).mat || '', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, symP: true, symS: true,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
   };

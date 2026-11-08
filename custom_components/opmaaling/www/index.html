@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -214,7 +214,7 @@ async function hentFirma() {
     const r = await api('firma'); if (!r.ok) return false;
     const f = await r.json(), før = JSON.stringify(data.serverFirma || {});
     if (mig && mig.admin && !(f.navn || f.logo) && (data.firma || data.firmaLogo)) {   // første gang: send det lokale firma op
-      data.serverFirma = { navn: firmaNavnLokal(), logo: data.firmaLogo || '', kunLogo: !!data.kunLogo, updated: Date.now() }; await sendFirma(); return true;
+      data.serverFirma = { navn: firmaNavnLokal(), logo: data.firmaLogo || '', kunLogo: !!data.kunLogo, ...(f.levAdr || data.levAdr ? { levAdr: f.levAdr || data.levAdr } : {}), updated: Date.now() }; await sendFirma(); return true;
     }
     if (data.firmaVent && mig && mig.admin) { data.firmaVent = false; await sendFirma(); return false; }
     data.serverFirma = f; return JSON.stringify(f) !== før;
@@ -257,7 +257,7 @@ function retFirma() {
     bg.querySelector('#fiNo').onclick = luk;
     bg.querySelector('#fiOk').onclick = () => {
       data.firma = bg.querySelector('#fiNavn').value.trim(); data.firmaLogo = logo; data.kunLogo = !!logo && kun;
-      if (HA) { data.serverFirma = { navn: data.firma, logo, kunLogo: data.kunLogo, updated: Date.now() }; sendFirma(); }
+      if (HA) { data.serverFirma = { ...(data.serverFirma || {}), navn: data.firma, logo, kunLogo: data.kunLogo, updated: Date.now() }; sendFirma(); }
       save(); luk(); render(); toast('Firma gemt');
     };
   });
@@ -1661,8 +1661,11 @@ function sagListe(list, emptyHTML, from) {
 const searchHTML = ph => `<input type="text" id="q" placeholder="${ph}" style="margin-bottom:10px">`;
 
 function renderHome() {
-  $('#hdr').innerHTML = `<h1>Sager</h1><button id="arkBtn">Arkiv</button><button id="bkBtn">Backup</button>`;
-  $('#bkBtn').onclick = openBackup;
+  $('#hdr').innerHTML = `<h1>Sager</h1><button id="arkBtn">Arkiv</button><button id="more">•••</button>`;
+  $('#more').onclick = () => menuSheet('Menu', [
+    ...(kanRetteFirma() ? [[retLevAdr, '🚚 Leveringsadresser'], [retFirma, '🏢 Firma og logo']] : []),
+    [openBackup, '💾 Backup'],
+  ]);
   $('#arkBtn').onclick = () => { view = { name: 'arkiv' }; render(); };
   const list = liveSager().filter(s => !s.arkiveret).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
@@ -1677,7 +1680,7 @@ function renderHome() {
     // sagsnummer og levering skal udfyldes – dialogen kommer igen med det, der allerede er skrevet
     let r = ['', '', ''];
     for (;;) {
-      r = await formDialog('Ny sag', [['Sagsnummer', r[0], 'Fx 2026-114', 'numeric'], ['Kunde / beskrivelse (valgfri)', r[1], 'Fx Jensen'], ['Hvor skal det leveres?', r[2], 'Fx Strandvejen 12, 5000 Odense']], 'Opret');
+      r = await formDialog('Ny sag', [['Sagsnummer', r[0], 'Fx 2026-114', 'numeric'], ['Kunde / beskrivelse (valgfri)', r[1], 'Fx Jensen'], ['Hvor skal det leveres?', r[2], 'Skriv adressen', 'lev']], 'Opret');
       if (!r) return;
       if (r[0] && r[2]) break;
       toast(!r[0] ? 'Skriv et sagsnummer' : 'Skriv hvor det skal leveres');
@@ -1797,7 +1800,7 @@ function menuSheet(title, items) {
   bg.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { close(); items[+b.dataset.i][0](); });
 }
 async function retSag(s) {
-  const r = await formDialog('Ret sag', [['Sagsnummer', s.nr || '', ''], ['Kunde / beskrivelse', s.navn || '', ''], ['Hvor skal det leveres?', s.lev || '', 'Fx Strandvejen 12, 5000 Odense']], 'Gem');
+  const r = await formDialog('Ret sag', [['Sagsnummer', s.nr || '', ''], ['Kunde / beskrivelse', s.navn || '', ''], ['Hvor skal det leveres?', s.lev || '', 'Skriv adressen', 'lev']], 'Gem');
   if (!r) return;
   if (!r[0]) { toast('Sagsnummer må ikke være tomt'); return; }
   if (liveSager().some(x => x.id !== s.id && x.nr === r[0]) && !(await dialog({ text: `Sagsnummer ${r[0]} findes allerede på en anden sag. Vil du bruge det alligevel?`, ok: 'Ja' }))) return;
@@ -1826,14 +1829,47 @@ function adrMenu(s, a) {
       s.adresser = s.adresser.filter(x => x.id !== a.id); touch(s); save(); view = { ...view, name: 'sag' }; render(); } }, 'Slet adresse', 'danger']
   ]);
 }
+const LEV_ADR = ['Hvileholmsvej 13, 5550 Langeskov', 'Strandvangen 15, 5300 Kerteminde'];
+// listen over faste leveringsadresser: fra Home Assistant (rettes af administratorer), ellers den lokale
+const levAdresser = () => { const f = HA && data.serverFirma; return f && Array.isArray(f.levAdr) ? f.levAdr : Array.isArray(data.levAdr) ? data.levAdr : LEV_ADR; };
+function retLevAdr() {
+  if (!kanRetteFirma()) { toast('Leveringsadresser kan kun rettes af en administrator'); return; }
+  let liste = [...levAdresser()];
+  const bg = document.createElement('div'); bg.className = 'dialog-bg';
+  const tegn = () => {
+    bg.innerHTML = `<div class="dialog" style="max-width:440px;width:100%"><div style="font-weight:700;font-size:18px;margin-bottom:8px">🚚 Leveringsadresser</div>
+      <div class="muted" style="font-size:14px;margin-bottom:8px">Kan vælges, når man opretter en sag. "Anden adresse" kan altid vælges.</div>
+      ${liste.length ? liste.map((a, i) => `<div class="row" style="gap:8px;margin:6px 0"><div class="grow" style="padding:10px 12px;background:#f3f5f8;border-radius:10px">${esc(a)}</div><button class="btn danger small" data-del="${i}" style="width:auto;padding:8px 12px">✕</button></div>`).join('') : '<div class="muted">Ingen adresser endnu.</div>'}
+      <label class="f">Ny adresse</label><div class="row" style="gap:8px"><input type="text" id="laNy" class="grow" placeholder="Fx Industrivej 3, 5000 Odense"><button class="btn sec small" id="laAdd" style="width:auto;padding:10px 14px">Tilføj</button></div>
+      <div class="btns" style="margin-top:14px"><button class="btn sec" id="laNo">Annuller</button><button class="btn" id="laOk">Gem</button></div></div>`;
+    bg.querySelectorAll('[data-del]').forEach(b2 => b2.onclick = () => { liste.splice(+b2.dataset.del, 1); tegn(); });
+    const add = () => { const v = bg.querySelector('#laNy').value.trim(); if (!v) return; if (!liste.includes(v)) liste.push(v); tegn(); bg.querySelector('#laNy').focus(); };
+    bg.querySelector('#laAdd').onclick = add; bg.querySelector('#laNy').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    bg.querySelector('#laNo').onclick = () => bg.remove();
+    bg.querySelector('#laOk').onclick = () => {
+      const rest = bg.querySelector('#laNy').value.trim(); if (rest && !liste.includes(rest)) liste.push(rest);
+      data.levAdr = liste;
+      if (HA) { data.serverFirma = { ...(data.serverFirma || {}), navn: firmaNavn(), logo: firmaLogo(), kunLogo: kunLogo(), levAdr: liste, updated: Date.now() }; sendFirma(); }
+      save(); bg.remove(); toast('Leveringsadresser gemt');
+    };
+  };
+  tegn(); document.body.appendChild(bg);
+}
 function formDialog(title, fields, ok) {
   return new Promise(resolve => {
     const bg = document.createElement('div'); bg.className = 'dialog-bg';
-    bg.innerHTML = `<div class="dialog"><p><b>${esc(title)}</b></p>${fields.map(([label, value, ph, mode], i) =>
-      `<label class="f" style="margin-top:${i ? 10 : 0}px">${esc(label)}</label><input type="text" data-f="${i}" value="${esc(value)}" placeholder="${esc(ph || '')}" ${mode ? `inputmode="${mode === 'numeric' ? 'text' : mode}"` : ''}>`).join('')}
+    bg.innerHTML = `<div class="dialog"><p><b>${esc(title)}</b></p>${fields.map(([label, value, ph, mode], i) => mode === 'lev'
+      // leveringsadresse: vælg en af de faste adresser eller skriv en anden
+      ? `<label class="f" style="margin-top:${i ? 10 : 0}px">${esc(label)}</label><select class="farve" data-lev="${i}"><option value="">– Vælg –</option>${levAdresser().map(a => `<option ${a === value ? 'selected' : ''}>${esc(a)}</option>`).join('')}<option value="__anden" ${value && !levAdresser().includes(value) ? 'selected' : ''}>Anden adresse…</option></select>
+         <input type="text" data-f="${i}" value="${esc(value)}" placeholder="${esc(ph || '')}" class="${value && !levAdresser().includes(value) ? '' : 'hidden'}" style="margin-top:6px">`
+      : `<label class="f" style="margin-top:${i ? 10 : 0}px">${esc(label)}</label><input type="text" data-f="${i}" value="${esc(value)}" placeholder="${esc(ph || '')}" ${mode ? `inputmode="${mode === 'numeric' ? 'text' : mode}"` : ''}>`).join('')}
       <div class="btns" style="margin-top:14px"><button class="btn sec" id="fNo">Annuller</button><button class="btn" id="fOk">${esc(ok)}</button></div></div>`;
     document.body.appendChild(bg);
     const ins = [...bg.querySelectorAll('[data-f]')];
+    bg.querySelectorAll('[data-lev]').forEach(sel => sel.onchange = () => {
+      const inp = bg.querySelector(`[data-f="${sel.dataset.lev}"]`);
+      if (sel.value === '__anden') { inp.value = ''; inp.classList.remove('hidden'); inp.focus(); } else { inp.value = sel.value; inp.classList.add('hidden'); }
+    });
     setTimeout(() => ins[0].focus(), 50);
     const done = v => { bg.remove(); resolve(v); };
     ins.forEach((el, i) => el.addEventListener('keydown', e => { if (e.key === 'Enter') { if (ins[i + 1]) ins[i + 1].focus(); else done(ins.map(x => x.value.trim())); } }));

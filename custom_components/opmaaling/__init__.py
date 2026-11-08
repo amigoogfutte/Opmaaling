@@ -271,7 +271,11 @@ class FirmaView(_Base):
         logo = obj.get("logo") or ""
         if logo and not (isinstance(logo, str) and logo.startswith("data:image/")):
             return self.json_message("Ugyldigt logo", 400)
+        lev = obj.get("levAdr")
+        lev = [str(x)[:120] for x in lev if str(x).strip()][:30] if isinstance(lev, list) else None
         ren = {"navn": str(obj.get("navn") or "")[:120], "logo": logo, "kunLogo": bool(obj.get("kunLogo")) and bool(logo), "updated": obj.get("updated") or 0}
+        if lev is not None:
+            ren["levAdr"] = lev
         await self.hass.async_add_executor_job(self.store.put_firma, ren)
         return self.json({"ok": True})
 

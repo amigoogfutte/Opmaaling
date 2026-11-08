@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -197,12 +197,32 @@ function save(skipSync) {
 const touch = s => { s.updated = Date.now(); if (data.firma) s.firma = data.firma; if (data.firmaLogo !== undefined) { s.firmaLogo = data.firmaLogo; s.kunLogo = !!data.kunLogo; } };
 // logo og "kun logo" følger også med sagerne til andre enheder, hvis det ikke er sat her
 const nyesteSag = k => [...(data.sager || [])].filter(s => s[k] !== undefined).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
-const firmaLogo = () => data.firmaLogo !== undefined ? data.firmaLogo : ((nyesteSag('firmaLogo') || {}).firmaLogo || '');
-const kunLogo = () => data.firmaLogo !== undefined ? !!data.kunLogo : !!(nyesteSag('firmaLogo') || {}).kunLogo;
+// firma fra Home Assistant (styres af administratorer) vinder over det lokale
+const sf = () => HA && data.serverFirma && (data.serverFirma.navn || data.serverFirma.logo) ? data.serverFirma : null;
+const firmaLogo = () => sf() ? sf().logo || '' : data.firmaLogo !== undefined ? data.firmaLogo : ((nyesteSag('firmaLogo') || {}).firmaLogo || '');
+const kunLogo = () => sf() ? !!sf().kunLogo : data.firmaLogo !== undefined ? !!data.kunLogo : !!(nyesteSag('firmaLogo') || {}).kunLogo;
 // firmanavn: skrives én gang og gemmes; følger med sagerne, så det også kommer frem på andre enheder
-const firmaNavn = () => data.firma || ([...(data.sager || [])].filter(s => s.firma).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0] || {}).firma || '';
+const firmaNavn = () => sf() ? sf().navn || '' : data.firma || ([...(data.sager || [])].filter(s => s.firma).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0] || {}).firma || '';
 // firmalogo gemmes på denne enhed (som billede); 'kunLogo' = vis kun logoet på PDF, ikke navnet
+// kun administratorer kan rette firma; det sendes til Home Assistant og vises hos alle brugere
+const kanRetteFirma = () => !HA || (mig && mig.admin);
+async function sendFirma() {
+  try { const r = await api('firma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data.serverFirma) }); if (!r.ok) toast('Firma kunne ikke gemmes i Home Assistant'); } catch (e) { /* prøves igen ved næste synkronisering */ data.firmaVent = true; }
+}
+async function hentFirma() {
+  try {
+    const r = await api('firma'); if (!r.ok) return false;
+    const f = await r.json(), før = JSON.stringify(data.serverFirma || {});
+    if (mig && mig.admin && !(f.navn || f.logo) && (data.firma || data.firmaLogo)) {   // første gang: send det lokale firma op
+      data.serverFirma = { navn: firmaNavnLokal(), logo: data.firmaLogo || '', kunLogo: !!data.kunLogo, updated: Date.now() }; await sendFirma(); return true;
+    }
+    if (data.firmaVent && mig && mig.admin) { data.firmaVent = false; await sendFirma(); return false; }
+    data.serverFirma = f; return JSON.stringify(f) !== før;
+  } catch (e) { return false; }
+}
+const firmaNavnLokal = () => data.firma || '';
 function retFirma() {
+  if (!kanRetteFirma()) { toast('Firma kan kun rettes af en administrator'); return; }
   return new Promise(resolve => {
     const bg = document.createElement('div'); bg.className = 'dialog-bg';
     let logo = firmaLogo(), kun = kunLogo();
@@ -237,6 +257,7 @@ function retFirma() {
     bg.querySelector('#fiNo').onclick = luk;
     bg.querySelector('#fiOk').onclick = () => {
       data.firma = bg.querySelector('#fiNavn').value.trim(); data.firmaLogo = logo; data.kunLogo = !!logo && kun;
+      if (HA) { data.serverFirma = { navn: data.firma, logo, kunLogo: data.kunLogo, updated: Date.now() }; sendFirma(); }
       save(); luk(); render(); toast('Firma gemt');
     };
   });
@@ -1645,10 +1666,10 @@ function renderHome() {
   $('#arkBtn').onclick = () => { view = { name: 'arkiv' }; render(); };
   const list = liveSager().filter(s => !s.arkiveret).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
-    `<div class="card row" style="padding:9px 12px;margin-bottom:10px"><div class="grow"><div class="muted" style="font-size:12.5px">Firma</div><div style="font-weight:600">${firmaLogo() ? `<img src="${firmaLogo()}" style="max-height:34px;max-width:100%;display:block;margin:2px 0">` : ''}${firmaLogo() && kunLogo() ? '' : firmaNavn() ? esc(firmaNavn()) : firmaLogo() ? '' : '<span style="color:#c0392b">Ikke angivet – tryk Ret</span>'}</div></div>
-      <button class="btn sec small" id="retFirma" style="width:auto;padding:8px 14px">✏️ Ret</button></div>` +
+    `<div class="card row" style="padding:9px 12px;margin-bottom:10px"><div class="grow"><div class="muted" style="font-size:12.5px">Firma</div><div style="font-weight:600">${firmaLogo() ? `<img src="${firmaLogo()}" style="max-height:34px;max-width:100%;display:block;margin:2px 0">` : ''}${firmaLogo() && kunLogo() ? '' : firmaNavn() ? esc(firmaNavn()) : firmaLogo() ? '' : (kanRetteFirma() ? '<span style="color:#c0392b">Ikke angivet – tryk Ret</span>' : '<span class="muted">Ikke angivet</span>')}</div></div>
+      ${kanRetteFirma() ? `<button class="btn sec small" id="retFirma" style="width:auto;padding:8px 14px">✏️ Ret</button>` : ''}</div>` +
     (list.length > 4 ? searchHTML('Søg sagsnummer, kunde eller adresse') : '') + `<div id="sagList"></div>`;
-  $('#retFirma').onclick = retFirma;
+  if ($('#retFirma')) $('#retFirma').onclick = retFirma;
   sagListe(list, `<div class="empty">Ingen aktive sager.<br>Tryk på <b>Ny sag</b> for at starte.</div>`, 'home');
   $('#main').insertAdjacentHTML('beforeend', `<div class="muted" style="text-align:center;font-size:12px;margin-top:24px">Version ${APP_VERSION}</div>`);
   $('#fabWrap').innerHTML = `<button class="btn fab" id="newSag">+ Ny sag</button>`;
@@ -2799,6 +2820,7 @@ async function sync() {
   let changedLocal = false;
   try {
     if (!mig) { await hentBrugere(); changedLocal = true; }
+    if (await hentFirma()) changedLocal = true;
     const remote = await (await api('sager')).json();
     const rmap = new Map(remote.map(r => [r.id, r]));
     // Hent nyere sager fra Home Assistant

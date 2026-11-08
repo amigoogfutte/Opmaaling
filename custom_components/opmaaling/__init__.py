@@ -99,6 +99,16 @@ class Store:
                 _find_foto_ids(d, ids)
         return ids
 
+    def get_firma(self) -> dict:
+        f = self.sager.parent / "firma.json"
+        try:
+            return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+        except (OSError, ValueError):
+            return {}
+
+    def put_firma(self, obj: dict) -> None:
+        self._write(self.sager.parent / "firma.json", json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+
     def list_fotos(self, user) -> list[str]:
         alle = [f.stem for f in self.fotos.glob("*.jpg")]
         ok = self.fotos_med_adgang(user)
@@ -237,6 +247,35 @@ class MigView(_Base):
         return self.json({"id": u.id, "navn": u.name, "admin": u.is_admin})
 
 
+class FirmaView(_Base):
+    """Firmanavn og logo: alle kan læse det, kun administratorer kan rette det."""
+
+    url = "/api/opmaaling/firma"
+    name = "api:opmaaling:firma"
+
+    async def get(self, request: web.Request) -> web.Response:
+        return self.json(await self.hass.async_add_executor_job(self.store.get_firma))
+
+    async def put(self, request: web.Request) -> web.Response:
+        if not request["hass_user"].is_admin:
+            return self.json_message("Kun administratorer kan rette firma", 403)
+        body = await request.read()
+        if len(body) > 1_500_000:
+            return self.json_message("For stor", 413)
+        try:
+            obj = json.loads(body)
+        except ValueError:
+            return self.json_message("Ugyldig JSON", 400)
+        if not isinstance(obj, dict):
+            return self.json_message("Forkert indhold", 400)
+        logo = obj.get("logo") or ""
+        if logo and not (isinstance(logo, str) and logo.startswith("data:image/")):
+            return self.json_message("Ugyldigt logo", 400)
+        ren = {"navn": str(obj.get("navn") or "")[:120], "logo": logo, "kunLogo": bool(obj.get("kunLogo")) and bool(logo), "updated": obj.get("updated") or 0}
+        await self.hass.async_add_executor_job(self.store.put_firma, ren)
+        return self.json({"ok": True})
+
+
 class BrugereView(_Base):
     """Brugere i Home Assistant, som en sag kan deles med."""
 
@@ -272,7 +311,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not data.get("http_registered"):
         # HTTP-ruter kan ikke fjernes igen, så de registreres kun én gang pr. opstart.
         await hass.http.async_register_static_paths([StaticPathConfig(APP_URL, str(WWW), False)])
-        for view in (SagerView(hass, store), SagView(hass, store), FotosView(hass, store), FotoView(hass, store), MigView(hass, store), BrugereView(hass, store), AppRedirectView()):
+        for view in (SagerView(hass, store), SagView(hass, store), FotosView(hass, store), FotoView(hass, store), MigView(hass, store), BrugereView(hass, store), FirmaView(hass, store), AppRedirectView()):
             hass.http.register_view(view)
         data["http_registered"] = True
 

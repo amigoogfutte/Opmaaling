@@ -78,6 +78,7 @@
     padding: 9px 12px; margin-top: 8px; font-size: 15px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .check input { width: 22px; height: 22px; margin: 0; accent-color: var(--blue); }
   .tag.ventil { background: #fdeee2; color: #9a4b0c; }
+  .tag.suppl { background: #c0392b; color: #fff; }
   .tag.raa { background: #ece8fb; color: #4c3a99; }
   .check.small { font-size: 15px; padding: 9px 12px; margin-top: 8px; }
   .check.small input { width: 22px; height: 22px; }
@@ -137,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.5';
+const APP_VERSION = '0.7.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -296,7 +297,7 @@ const dorTxt = p => {
   const k = dKind(p), L = normLines(p.lines), flere = fracFields(L).length > 1;
   if (k === 'skyde') return [`${p.dSkyd === 'h' ? 'Højregående' : 'Venstregående'}`, dFyldTxt(p)].filter(Boolean).join(', ');
   if (k === 'folde') return [`${flojeAntal(p)}-fløjet`, foldTxt(p), p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad', dFyldTxt(p)].filter(Boolean).join(', ');
-  const laas = [p.dLaas ? 'lås' : '', p.dSuppl ? 'suppleringslås' : ''].filter(Boolean);
+  const laas = [p.dLaas ? 'lås' : ''].filter(Boolean);   // suppleringslås vises fremhævet for sig
   return [flere ? '' : `Hængsel ${p.dHinge === 'h' ? 'højre' : 'venstre'}`, p.dRetn === 'ud' ? 'åbner udad' : 'åbner indad',
     dFyldTxt(p), laas.length ? 'med ' + laas.join(' og ') : ''].filter(Boolean).join(', ');
 };
@@ -1490,7 +1491,7 @@ function renderAdr() {
         <img class="thumb" data-thumb="${p.id}" alt="">
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
         <div><span class="tag ${p.type === 'glas' ? 'glas' : p.type === 'dor' ? 'dor' : ''}">${typeNavn(p)}</span>
-        ${harVentil(p) ? '<span class="tag ventil">Ventil</span>' : ''}
+        ${harVentil(p) ? '<span class="tag ventil">Ventil</span>' : ''}${harSuppl(p) ? '<span class="tag suppl">🔒 Suppleringslås</span>' : ''}
         ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(p.raaType) : ''}</span>` : ''}
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
@@ -1594,6 +1595,7 @@ const glasOpbTxt = p => {
   return `${lag}-lags glas: ${dele.map(v => +v ? fmtMM(v) : '?').join('-')}${sum ? ` (${fmtMM(sum)} mm)` : ''} – ude til inde`;
 };
 const indlTxt = p => p.type === 'glas' && glasLag(p) !== 1 && INDLAEG[p.indlaeg] ? `Indlægsprofil: ${INDLAEG[p.indlaeg].toLowerCase()}` : '';
+const harSuppl = p => p.type === 'dor' && !panelMode(p) && !!p.dSuppl;
 const harVentil = p => p.type !== 'glas' && !!p.ventil;   // glas har ingen ventil
 const harTil = p => p.type !== 'glas' && harTil0(p);
 const harTil0 = p => p.til !== undefined ? !!p.til : !!((p.tilSider && p.tilSider.length) || p.tilNote);
@@ -1614,6 +1616,7 @@ const sketchExtra = p => {
   if (stafkTxt(p)) a.push(['#1b1f24', stafkTxt(p)]);
   if (symTxt(p)) a.push(['#1b1f24', symTxt(p)]);
   if (fastTxt(p)) a.push(['#1b1f24', fastTxt(p)]);
+  if (harSuppl(p)) a.push(['#c0392b', 'MED SUPPLERINGSLÅS']);
   for (const t of aabningLines(p)) a.push(['#c0392b', t]);
   for (const t of fyldLines(p)) a.push(['#8a6d3b', t]);
   for (const f of farveTxt(p)) a.push(['#1b1f24', f]);
@@ -2071,7 +2074,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harVentil(p) ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? ', MED VENTIL' : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -2116,7 +2119,7 @@ function posLines(p) {
     dorTxt(p),
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
     karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p), ...fyldLines(p),
-    harVentil(p) ? 'Med ventil' : '', glasOpbTxt(p), indlTxt(p),
+    harSuppl(p) ? 'Suppleringslås: JA' : '', harVentil(p) ? 'Med ventil' : '', glasOpbTxt(p), indlTxt(p),
     p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
     tilTxt(p), pladeTxt(p), ...farveTxt(p),
     p.note ? 'Note: ' + p.note : ''
@@ -2159,7 +2162,8 @@ async function makePDF(s, only, navn) {
     for (const p of a.pos) {
       const c = await makeSketch(p, 700, { utenTekst: true });
       const imgW = 78, imgH = Math.min(95, imgW * c.height / c.width), iw = imgH < imgW * c.height / c.width ? imgH * c.width / c.height : imgW;
-      const lines = posLines(p).flatMap(l => (doc.setFont('helvetica', l.startsWith('Note: ') ? 'bold' : 'normal'), doc.setFontSize(10), doc.splitTextToSize(l, PW - M - (M + imgW + 6)).map(t2 => ({ t: t2, note: l.startsWith('Note: ') }))));
+      const hl = l => l.startsWith('Note: ') ? 'note' : l.startsWith('Suppleringslås') ? 'suppl' : '';
+      const lines = posLines(p).flatMap(l => (doc.setFont('helvetica', hl(l) ? 'bold' : 'normal'), doc.setFontSize(10), doc.splitTextToSize(l, PW - M - (M + imgW + 6)).map(t2 => ({ t: t2, note: hl(l) }))));
       const blockH = Math.max(imgH, 7 + lines.length * 5) + 6;
       if (y + blockH > BOT) { doc.addPage(); y = M; }
       doc.addImage(c.toDataURL('image/jpeg', 0.85), 'JPEG', M, y, iw, imgH);
@@ -2168,7 +2172,10 @@ async function makePDF(s, only, navn) {
       doc.text(`Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`, tx, ty); ty += 7;
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       for (const l of lines) {
-        if (l.note) {   // noter fremhæves med gul baggrund og fed skrift
+        if (l.note === 'suppl') {   // suppleringslås: rød markering med hvid skrift
+          doc.setFillColor(192, 57, 43); doc.rect(tx - 1.5, ty - 3.8, PW - M - tx + 1.5, 5, 'F');
+          doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+        } else if (l.note) {   // noter fremhæves med gul baggrund og fed skrift
           doc.setFillColor(255, 238, 150); doc.rect(tx - 1.5, ty - 3.8, PW - M - tx + 1.5, 5, 'F');
           doc.setFont('helvetica', 'bold'); doc.setTextColor(90, 60, 0);
         } else { doc.setFont('helvetica', 'normal'); doc.setTextColor(27, 31, 36); }

@@ -138,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.8.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1513,7 +1513,7 @@ function renderAdr() {
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
         <div><span class="tag ${p.type === 'glas' ? 'glas' : p.type === 'dor' ? 'dor' : ''}">${typeNavn(p)}</span>
         ${harVentil(p) ? '<span class="tag ventil">Ventil</span>' : ''}${harSuppl(p) ? '<span class="tag suppl">🔒 Suppleringslås</span>' : ''}
-        ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(p.raaType) : ''}</span>` : ''}
+        ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(raaNavn(p.raaType)) : ''}</span>` : ''}
         <span style="margin-left:6px">${p.antal} stk</span></div>
         <div class="muted">B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm</div>
         ${dorTxt(p) ? `<div class="muted">${dorTxt(p)}</div>` : ''}
@@ -1649,7 +1649,7 @@ const sketchExtra = p => {
   for (const f of farveTxt(p)) a.push(['#1b1f24', f]);
   if (tilTxt(p)) a.push(['#17694a', tilTxt(p)]);
   if (pladeTxt(p)) a.push(['#1b1f24', pladeTxt(p)]);
-  if (p.raa) a.push(['#4c3a99', 'Råglas: ' + (p.raaType || 'type ikke valgt')]);
+  if (p.raa) a.push(['#4c3a99', 'Råglas: ' + (raaNavn(p.raaType) || 'type ikke valgt')]);
   if (glasOpbTxt(p)) a.push(['#1b1f24', glasOpbTxt(p)]);
   if (indlTxt(p)) a.push(['#1b1f24', indlTxt(p)]);
   return a;
@@ -1662,12 +1662,13 @@ const RAAGLAS = [
   '4 mm Ornament 597', '4 mm Abstrach', '6 mm Spejtråd', '7 mm Treclar Tråd', '7 mm Georgian Tråd',
   '4 mm Satimat', '6 mm Antelio Silver', '6 mm Antelio Klar', '4 mm Grå Parsol'
 ];
+const raaNavn = n => String(n || '').replace(/^\s*\d+([.,]\d+)?\s*mm\s+/i, '');   // kun navnet, ikke tykkelsen
 const raaSlug = n => n.toLowerCase().replace(/æ/g, 'ae').replace(/ø/g, 'oe').replace(/å/g, 'aa').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const raaImg = n => `raaglas/${raaSlug(n)}.jpg`;
 function raaTiles(selected) {
   const known = RAAGLAS.includes(selected);
   return RAAGLAS.map(n => `<div class="raatile ${n === selected ? 'on' : ''}" data-raa="${esc(n)}">
-      <div class="ph"><img src="${raaImg(n)}" alt="" loading="lazy" onerror="this.remove()"></div>${esc(n)}</div>`).join('') +
+      <div class="ph"><img src="${raaImg(n)}" alt="" loading="lazy" onerror="this.remove()"></div>${esc(raaNavn(n))}</div>`).join('') +
     `<div class="raatile ${selected && !known ? 'on' : ''}" data-raa="__andet"><div class="ph">✎</div>Anden type</div>`;
 }
 
@@ -1994,7 +1995,7 @@ function editPos(s, a, existing) {
       raaSelEl.innerHTML = `<span class="nm">Anden type</span><span class="chg">${open ? 'Luk' : 'Skift'}</span>`;
     } else {
       raaSelEl.className = 'raasel';
-      raaSelEl.innerHTML = `<img src="${raaImg(raaSel)}" alt="" onerror="this.remove()"><span class="nm">${esc(raaSel)}</span><span class="chg">${open ? 'Luk' : 'Skift'}</span>`;
+      raaSelEl.innerHTML = `<img src="${raaImg(raaSel)}" alt="" onerror="this.remove()"><span class="nm">${esc(raaNavn(raaSel))}</span><span class="chg">${open ? 'Luk' : 'Skift'}</span>`;
     }
   };
   raaSelEl.onclick = () => { raaGrid.classList.toggle('hidden'); updRaaSel(); };
@@ -2114,7 +2115,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (ca. ${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + p.raaType + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (ca. ${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + raaNavn(p.raaType) + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -2160,7 +2161,7 @@ function posLines(p) {
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
     karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p), ...fyldLines(p),
     harSuppl(p) ? 'Suppleringslås: JA' : '', harVentil(p) ? `Med ventil i ${ventIRamme(p) ? 'ramme' : 'karm'} (ca. ${ventL(p)} mm)` : '', glasOpbTxt(p), indlTxt(p),
-    p.raa ? 'Råglas' + (p.raaType ? ': ' + p.raaType : '') : '',
+    p.raa ? 'Råglas' + (p.raaType ? ': ' + raaNavn(p.raaType) : '') : '',
     tilTxt(p), pladeTxt(p), ...farveTxt(p),
     p.note ? 'Note: ' + p.note : ''
   ].filter(Boolean);

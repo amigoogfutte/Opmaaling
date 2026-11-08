@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.6';
+const APP_VERSION = '0.8.7';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -2214,7 +2214,8 @@ async function makePDF(s, only, navn) {
   const text = (str, x0, size = 10, style = 'normal', color = [27, 31, 36]) => { doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...color); doc.text(String(str), x0, y); };
   // Overskrift
   doc.setFillColor(31, 95, 168); doc.rect(0, 0, PW, 26, 'F');
-  y = 12; text('Vinduesopmåling', M, 18, 'bold', [255, 255, 255]);
+  const allePos = adrs.flatMap(a2 => a2.pos), kunGlas = allePos.length && allePos.every(q => q.type === 'glas');
+  y = 12; text(kunGlas ? 'Glasopmåling' : 'Vinduesopmåling', M, 18, 'bold', [255, 255, 255]);
   y = 20; text(`${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}`, M, 11, 'normal', [255, 255, 255]);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
   doc.text(`Dato: ${new Date().toLocaleDateString('da-DK')}`, PW - M, 12, { align: 'right' });

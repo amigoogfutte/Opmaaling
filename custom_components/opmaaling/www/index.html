@@ -137,7 +137,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.4';
+const APP_VERSION = '0.7.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1458,10 +1458,10 @@ function renderSag() {
         <div class="grow"><div class="title">${esc(a.adresse)}</div><div class="muted">${a.pos.length} pos.</div></div>
         <div style="text-align:right;flex:none"><div><b>${ta.v}</b> <span class="muted">vinduer</span></div>
         <div><b>${ta.g}</b> <span class="muted">glas</span></div>${ta.d ? `<div><b>${ta.d}</b> <span class="muted">${ta.d === 1 ? 'dør' : 'døre'}</span></div>` : ''}</div></div>`; }).join('')}
-    ${allPos(s).length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del hele sagen som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}
+    ${allPos(s).length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del hele sagen som PDF</button></div>` : ''}
     ${s.arkiveret ? '' : `<button class="btn sec" id="arkiver" style="margin-top:16px">Arkivér sag</button>`}`;
   $('#main').querySelectorAll('[data-a]').forEach(el => el.onclick = () => { view = { ...view, name: 'adr', adrId: el.dataset.a }; render(); });
-  if (allPos(s).length) { $('#shareTxt').onclick = () => sharePDF(s); $('#copyTxt').onclick = () => copyText(listText(s)); }
+  if (allPos(s).length) { $('#shareTxt').onclick = () => sharePDF(s); }
   $('#retSag').onclick = () => retSag(s);
   const ark = $('#arkiver'); if (ark) ark.onclick = () => arkiver(s, true);
   const re = $('#reopen'); if (re) re.onclick = () => arkiver(s, false);
@@ -1505,9 +1505,9 @@ function renderAdr() {
         ${farveTxt(p).map(f => `<div class="muted">${esc(f)}</div>`).join('')}
         ${p.note ? `<div class="note-hl">📝 ${esc(p.note)}</div>` : ''}</div>
       </div>`).join('')}</div>
-    ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del som PDF</button></div><div class="btns"><button class="btn sec small" id="copyTxt">Kopiér som tekst</button></div>` : ''}`;
+    ${a.pos.length ? `<div class="btns"><button class="btn" id="shareTxt">📄 Del som PDF</button></div>` : ''}`;
   $('#main').querySelectorAll('[data-p]').forEach(el => el.onclick = () => editPos(s, a, a.pos.find(p => p.id === el.dataset.p)));
-  if (a.pos.length) { $('#shareTxt').onclick = () => sharePDF(s, a); $('#copyTxt').onclick = () => copyText(listText(s, a)); }
+  if (a.pos.length) { $('#shareTxt').onclick = () => sharePDF(s, a); }
   $('#fabWrap').innerHTML = `<button class="btn fab" id="addPos">+ Tilføj vindue/glas/dør</button>`;
   $('#addPos').onclick = () => editPos(s, a, null);
   for (const p of a.pos) {

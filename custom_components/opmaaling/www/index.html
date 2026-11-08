@@ -138,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.1';
+const APP_VERSION = '0.8.2';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1613,7 +1613,7 @@ const glasOpbTxt = p => {
   const lag = glasLag(p), dele = lag === 1 ? [p.gUd] : lag === 3 ? [p.gUd, p.gMl, p.gMid, p.gMl, p.gInd] : [p.gUd, p.gMl, p.gInd];
   if (lag === 1) return +p.gUd ? `1-lags glas: ${fmtMM(p.gUd)} mm` : glasLagTxt(p);
   const sum = dele.every(v => +v) ? dele.reduce((a, v) => a + +v, 0) : 0;
-  return `${lag}-lags glas: ${dele.map(v => +v ? fmtMM(v) : '?').join('-')}${sum ? ` (${fmtMM(sum)} mm)` : ''} – ude til inde`;
+  return `${lag}-lags glas: ${dele.map(v => +v ? fmtMM(v) : '?').join('-')}${sum ? ` (${fmtMM(sum)} mm)` : ''}`;
 };
 const indlTxt = p => p.type === 'glas' && glasLag(p) !== 1 && INDLAEG[p.indlaeg] ? `Indlægsprofil: ${INDLAEG[p.indlaeg].toLowerCase()}` : '';
 const harSuppl = p => p.type === 'dor' && !panelMode(p) && !!p.dSuppl;

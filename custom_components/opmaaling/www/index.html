@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.9';
+const APP_VERSION = '0.9.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -2199,7 +2199,7 @@ function cropEditor(src, crop) {
 function listText(s, only) {
   const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (ca. ${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + raaNavn(p.raaType) + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
-  let out = `${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}\n${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
+  let out = `${sagLabel(s)}\n${s.navn ? 'Kunde: ' + s.navn + '\n' : ''}${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
   const vent = list => list.filter(harVentil).reduce((n, p) => n + (p.antal || 0), 0);
   const raa = list => list.filter(p => p.raa).reduce((n, p) => n + (p.antal || 0), 0);
@@ -2265,7 +2265,7 @@ async function makePDF(s, only, navn) {
   doc.setFillColor(31, 95, 168); doc.rect(0, 0, PW, 26, 'F');
   const allePos = adrs.flatMap(a2 => a2.pos), kunGlas = allePos.length && allePos.every(q => q.type === 'glas');
   y = 12; text(kunGlas ? 'Glasopmåling' : 'Vinduesopmåling', M, 18, 'bold', [255, 255, 255]);
-  y = 20; text(`${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}`, M, 11, 'normal', [255, 255, 255]);
+  y = 20; text(sagLabel(s), M, 11, 'normal', [255, 255, 255]);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
   const logoUrl = firmaLogo(), firma = logoUrl && kunLogo() ? '' : (firmaNavn() || s.firma);
   let hoejre = PW - M;
@@ -2280,6 +2280,7 @@ async function makePDF(s, only, navn) {
   if (firma) { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text(firma, hoejre, 12, { align: 'right' }); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
   doc.text(`Dato: ${new Date().toLocaleDateString('da-DK')}`, hoejre, firma || logoUrl ? 20 : 12, { align: 'right' });
   y = 36;
+  if (s.navn) { text(`Kunde: ${s.navn}`, M, 11, 'bold'); y += 6; }
   text(only ? `Adresse: ${only.adresse}` : `${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}`, M, 11, 'bold');
   if (s.lev) { y += 6; text(`Leveres: ${s.lev}`, M, 11, 'bold'); }
   y += 6; text(`I alt: ${antalTxt(t)}. Mål i mm, bredde × højde.`, M, 10);

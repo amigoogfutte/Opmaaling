@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.9.1';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1311,7 +1311,7 @@ async function makeSketch(p, maxSide = 700, opts = {}) {
   x.fillStyle = '#1b1f24'; x.font = `700 ${fs}px -apple-system, Helvetica, Arial, sans-serif`; x.textBaseline = 'middle';
   const t = `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}`;
   x.fillText(t, fs * 0.8, fs * 1.1);
-  const typeTxt = `${typeNavn(p)}${harVentil(p) ? ' · ventil' : ''}${p.raa ? ' · råglas' : ''} · ${p.antal || 1} stk`;
+  const typeTxt = `${typeNavn(p)}${matTxt(p) ? ' · ' + matTxt(p).toLowerCase() : ''}${harVentil(p) ? ' · ventil' : ''}${p.raa ? ' · råglas' : ''} · ${p.antal || 1} stk`;
   x.font = `500 ${Math.round(fs * 0.8)}px -apple-system, Helvetica, Arial, sans-serif`; x.fillStyle = '#6b7280';
   x.textAlign = 'right'; x.fillText(typeTxt, W - fs * 0.5, fs * 1.1); x.textAlign = 'left';
   // målpile
@@ -1426,7 +1426,7 @@ function tegnFoldePlan(x, p, L, R, top, fs) {
 }
 const thumbCache = new Map();
 async function thumbURL(p) {
-  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.indlaeg || '', glasOpbTxt(p), harVentil(p) ? ventL(p) + (p.ventPlac || '') : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', dFyldOf(p), p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
+  const key = [p.id, p.b, p.h, p.antal, p.type, p.kd, p.kt, p.stafk || '', symP(p) ? 1 : 0, symS(p) ? 1 : 0, harTil(p) ? 1 : 0, (p.tilSider || []).join(), harPlade(p) ? 1 : 0, farveTxt(p).join(), p.indlaeg || '', p.mat || '', glasOpbTxt(p), harVentil(p) ? ventL(p) + (p.ventPlac || '') : 0, p.raa ? 1 : 0, p.rum, p.nr, p.fotoId || '', fotoMem.has(p.fotoId) ? 1 : 0, p.crop ? JSON.stringify(p.crop) : '', JSON.stringify(p.lines || ''), p.visning || '', 3, p.dHinge || '', p.dRetn || '', dFyldOf(p), p.dKind || '', p.dSkyd || '', p.dFloj || '', p.dLaas ? 1 : 0, p.dSuppl ? 1 : 0, p.dFoldDel || '', p.dFoldSide || '', p.dFoldGaa || ''].join('|');
   if (thumbCache.has(key)) return thumbCache.get(key);
   const c = await makeSketch(p, 420, { utenTekst: true });   // listen: kun tegningen, teksten står ved siden af
   const u = c.toDataURL('image/jpeg', 0.8); thumbCache.set(key, u); return u;
@@ -1561,7 +1561,7 @@ function renderAdr() {
       <div class="card clickable row" data-p="${p.id}">
         <img class="thumb" data-thumb="${p.id}" alt="">
         <div class="grow"><div class="title">Pos. ${p.nr}${p.rum ? ' · ' + esc(p.rum) : ''}</div>
-        <div><span class="tag ${p.type === 'glas' ? 'glas' : p.type === 'dor' ? 'dor' : ''}">${typeNavn(p)}</span>
+        <div><span class="tag ${p.type === 'glas' ? 'glas' : p.type === 'dor' ? 'dor' : ''}">${typeNavn(p)}</span>${matTxt(p) ? `<span class="tag">${matTxt(p)}</span>` : ''}
         ${harVentil(p) ? '<span class="tag ventil">Ventil</span>' : ''}${harSuppl(p) ? '<span class="tag suppl">🔒 Suppleringslås</span>' : ''}
         ${p.raa ? `<span class="tag raa">Råglas${p.raaType ? ': ' + esc(raaNavn(p.raaType)) : ''}</span>` : ''}
         <span style="margin-left:6px">${p.antal} stk</span></div>
@@ -1658,6 +1658,8 @@ const INDLAEG = { alu: 'Aluminium', sort: 'Sort', lysgraa: 'Lysgrå' };
 // glastype pr. glas: float er standard
 const GLASTYPE = { float: 'Float', haerdet: 'Hærdet', lamineret: 'Lamineret', andet: 'Andet' };
 const gTypeNavn = (p, k) => { const t = p['gT' + k]; return t === 'andet' ? (p['gA' + k] || 'andet') : t && t !== 'float' ? GLASTYPE[t].toLowerCase() : ''; };
+const MATERIALE = { trae: 'Træ', traealu: 'Træ/alu', pvc: 'PVC' };
+const matTxt = p => p.type !== 'glas' && MATERIALE[p.mat] ? MATERIALE[p.mat] : '';
 const LAM_MM = 0.38;   // lamineret glas: folien gør glasset 0,38 mm tykkere
 const fmtDec = n => Number((+n).toFixed(2)).toLocaleString('da-DK');
 // forklaring vises kun i appen (ikke i PDF)
@@ -1742,7 +1744,7 @@ function editPos(s, a, existing) {
   const last = a.pos[a.pos.length - 1] || allPos(s)[allPos(s).length - 1];
   const p = existing ? { ...existing } : {
     id: uid(), nr: allPos(s).reduce((m, q) => Math.max(m, q.nr || 0), 0) + 1,
-    rum: '', type: last ? last.type : 'vindue', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, symP: true, symS: true,
+    rum: '', type: last ? last.type : 'vindue', mat: last ? last.mat || '' : '', b: '', h: '', kd: last ? last.kd || '' : '', kt: last ? last.kt || '' : '', antal: 1, stafk: 'uden', ventil: false, raa: false, raaType: '', til: false, tilSider: [], plade: false, symP: true, symS: true,
     fuK: last ? last.fuK || '' : '', fuR: last ? last.fuR || '' : '', fuEns: last ? last.fuEns !== false : true,
     fiK: last ? last.fiK || '' : '', fiR: last ? last.fiR || '' : '', fiEns: last ? last.fiEns !== false : true, note: '', fotoId: null
   };
@@ -1750,6 +1752,8 @@ function editPos(s, a, existing) {
   bg.innerHTML = `<div class="sheet">
     <div class="sheet-top"><button id="eCancel">Annuller</button><h2>${isNew ? 'Ny position' : 'Pos. ' + p.nr}</h2><button class="save" id="eSave">Gem</button></div>
     <div class="seg" id="eType"><button data-t="vindue">Vindue</button><button data-t="glas">Glas</button><button data-t="dor">Dør</button></div>
+    <div id="eMatWrap"><label class="f">Materiale</label>
+      <div class="seg" id="eMat">${Object.entries(MATERIALE).map(([k, v]) => `<button type="button" data-v="${k}">${v}</button>`).join('')}</div></div>
     <div id="eGLagWrap" class="hidden"><label class="f">Er det 1-, 2- eller 3-lags glas?</label>
       <div class="seg" id="eGLag"><button type="button" data-v="1">1-lags</button><button type="button" data-v="2">2-lags</button><button type="button" data-v="3">3-lags</button></div></div>
     <div id="eDorOpts" class="hidden">
@@ -1863,6 +1867,8 @@ function editPos(s, a, existing) {
   const updDor = () => {
     bg.querySelector('#ePladeRow').classList.toggle('hidden', p.type === 'dor' || p.type === 'glas');
     bg.querySelector('#eTilAll').classList.toggle('hidden', p.type === 'glas'); bg.querySelector('#eVentilRow').classList.toggle('hidden', p.type === 'glas'); bg.querySelector('#eFarveWrap').classList.toggle('hidden', p.type === 'glas'); bg.querySelector('#eIndlWrap').classList.toggle('hidden', p.type !== 'glas'); bg.querySelector('#eGLagWrap').classList.toggle('hidden', p.type !== 'glas');
+    bg.querySelector('#eMatWrap').classList.toggle('hidden', p.type === 'glas');
+    bg.querySelectorAll('#eMat button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === p.mat));
     bg.querySelector('#eDorOpts').classList.toggle('hidden', p.type !== 'dor');
     const k = dKind(p), vis = (id, on) => bg.querySelector(id).classList.toggle('hidden', !on);
     bg.querySelectorAll('#eDKind .chip').forEach(c2 => c2.classList.toggle('on', c2.dataset.k === k));
@@ -2105,6 +2111,7 @@ function editPos(s, a, existing) {
     bg.querySelectorAll(`#eGT${k} button`).forEach(b2 => b2.onclick = () => { p['gT' + k] = b2.dataset.v; updGlas(); redraw(); });
     bg.querySelector(`#eGTA${k}`).addEventListener('input', updGlas);
   }
+  bg.querySelectorAll('#eMat button').forEach(b2 => b2.onclick = () => { p.mat = b2.dataset.v; bg.querySelectorAll('#eMat button').forEach(b3 => b3.classList.toggle('on', b3.dataset.v === p.mat)); redraw(); });
   bg.querySelectorAll('#eGLag button').forEach(b2 => b2.onclick = () => { p.gLag = +b2.dataset.v; updGlas(); redraw(); });
   for (const id of ['#eGUd', '#eGMl', '#eGMid', '#eGMl2', '#eGInd']) bg.querySelector(id).addEventListener('input', updGlas);
   updGlas();
@@ -2197,7 +2204,7 @@ function cropEditor(src, crop) {
 
 /* ============ Del / kopiér ============ */
 function listText(s, only) {
-  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (ca. ${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + raaNavn(p.raaType) + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
+  const line = p => `Pos. ${p.nr}${p.rum ? ' – ' + p.rum : ''}: B ${fmtMM(p.b)} × H ${fmtMM(p.h)} mm, ${p.antal} stk${matTxt(p) ? ', ' + matTxt(p) : ''}${p.type === 'dor' ? ', ' + typeNavn(p).toLowerCase() : ''}${dorTxt(p) ? ', ' + dorTxt(p).toLowerCase() : ''}${karmTxt(p) ? ', ' + karmTxt(p).toLowerCase() : ''}${stafkTxt(p) ? ', ' + stafkTxt(p).toLowerCase() : ''}${symTxt(p) ? ', ' + symTxt(p).toLowerCase() : ''}${fastTxt(p) ? ', ' + fastTxt(p) : ''}${aabningLines(p).map(t2 => ', ' + t2).join('')}${fyldLines(p).map(t2 => ', ' + t2).join('')}${harSuppl(p) ? ', MED SUPPLERINGSLÅS' : ''}${harVentil(p) ? `, MED VENTIL I ${ventIRamme(p) ? 'RAMME' : 'KARM'} (ca. ${ventL(p)} mm)` : ''}${p.raa ? ', RÅGLAS' + (p.raaType ? ' (' + raaNavn(p.raaType) + ')' : '') : ''}${glasOpbTxt(p) ? ', ' + glasOpbTxt(p) : ''}${indlTxt(p) ? ', ' + indlTxt(p) : ''}${tilTxt(p) ? ', ' + tilTxt(p) : ''}${pladeTxt(p) ? ', ' + pladeTxt(p) : ''}${farveTxt(p).map(f => ', ' + f).join('')}${p.note ? '\n    >>> NOTE: ' + p.note : ''}`;
   const adrs = only ? [only] : (s.adresser || []).filter(a => a.pos.length);
   let out = `${sagLabel(s)}\n${s.navn ? 'Kunde: ' + s.navn + '\n' : ''}${s.lev ? 'Leveres: ' + s.lev + '\n' : ''}${only ? 'Adresse: ' + only.adresse + '\n' : ''}Dato: ${new Date().toLocaleDateString('da-DK')}\nMål i mm, bredde × højde, målt midt på.\n`;
   if (!only) { const t = totals(s); out += `Hele sagen: ${antalTxt(t)} på ${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}\n`; }
@@ -2238,7 +2245,7 @@ function loadJsPDF() {
 // Oplysninger om en position som linjer til PDF'en
 function posLines(p) {
   return [
-    `${typeNavn(p)} · ${p.antal || 1} stk`,
+    `${typeNavn(p)}${matTxt(p) ? ' · ' + matTxt(p) : ''} · ${p.antal || 1} stk`,
     dorTxt(p),
     `Bredde ${fmtMM(p.b)} mm × højde ${fmtMM(p.h)} mm`,
     karmTxt(p), stafkTxt(p), symTxt(p), ...postMaal(p), fastTxt(p), ...aabningLines(p), ...fyldLines(p),

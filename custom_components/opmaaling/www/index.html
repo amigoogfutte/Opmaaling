@@ -138,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.7.9';
+const APP_VERSION = '0.8.0';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -645,6 +645,7 @@ function plainDrawing(p, maxSide) {
     lvS.forEach((l, i) => { const cc = xs[i], t2 = bw(l); if (cc == null) return; const [y0, y1] = spanY(l); x.fillRect(cc - t2 / 2, y0, t2, y1 - y0); x.strokeRect(cc - t2 / 2, y0, t2, y1 - y0); });
     lhS.forEach((l, i) => { const cc = ys[i], t2 = bw(l); if (cc == null) return; const [x0, x1] = spanX(l); x.fillRect(x0, cc - t2 / 2, x1 - x0, t2); x.strokeRect(x0, cc - t2 / 2, x1 - x0, t2); });
   };
+  let ventPanel = null;   // skyde-/foldedør: fløjen, hvor en ventil i rammen sidder
   if (dk === 'skyde' || dk === 'folde') {
     const ix0 = f + gap, ix1 = w - f - gap, iy0 = f + gap, iy1 = h - fb - gap, iw = ix1 - ix0;
     x.save(); x.strokeStyle = '#c0392b'; x.fillStyle = '#c0392b'; x.lineWidth = lw * 1.3;
@@ -653,6 +654,7 @@ function plainDrawing(p, maxSide) {
       const venstre = p.dSkyd !== 'h', ov = iw * 0.03, mid = ix0 + iw / 2;
       x.restore();
       if (venstre) { panel(ix0, mid + ov, iy0, iy1); panel(mid - ov, ix1, iy0, iy1); } else { panel(mid - ov, ix1, iy0, iy1); panel(ix0, mid + ov, iy0, iy1); }
+      ventPanel = venstre ? [mid - ov, ix1, iy0] : [ix0, mid + ov, iy0];   // skydefløjen
       x.save(); x.strokeStyle = '#c0392b'; x.fillStyle = '#c0392b'; x.lineWidth = lw * 1.3;
       const cx = venstre ? (mid + ix1) / 2 : (ix0 + mid) / 2, cy = (iy0 + iy1) / 2, L2 = iw * 0.16, dir = venstre ? -1 : 1, a2 = Math.max(6, iw * 0.035);
       x.beginPath(); x.moveTo(cx - dir * L2, cy); x.lineTo(cx + dir * L2, cy); x.stroke();
@@ -664,6 +666,7 @@ function plainDrawing(p, maxSide) {
       const plan = foldPlan(p), n = plan.n, pw = iw / n;
       x.restore();
       for (let i = 0; i < n; i++) panel(ix0 + i * pw + gap / 2, ix0 + (i + 1) * pw - gap / 2, iy0, iy1);
+      { const vi = plan.dor ? plan.dor.i : plan.midt ? plan.midt.gaa : 0; ventPanel = [ix0 + vi * pw + gap / 2, ix0 + (vi + 1) * pw - gap / 2, iy0]; }
       x.save(); x.strokeStyle = '#c0392b'; x.lineWidth = lw * 1.2; x.setLineDash(p.dRetn === 'ud' ? [] : [lw * 4, lw * 3]);
       // åbningstrekant pr. fløj som på en almindelig dør: første fløj (ved karmen i den side, der foldes mod)
       // har åbning mod karmen og spids mod næste fløj, næste fløj omvendt, osv.
@@ -819,11 +822,15 @@ function plainDrawing(p, maxSide) {
     }
   }
   // ventil: mørk streg i rammens overstykke, midt på den bredeste ramme i øverste række
-  if (harVentil(p) && !dor && !ventIRamme(p)) {   // i karmens overstykke, midt på vinduet
+  if (harVentil(p) && !ventIRamme(p)) {   // i karmens overstykke, midt på vinduet
     const len = ventL(p) * w / (+p.b || 1000), th = Math.max(3, f * 0.45);
     x.save(); x.fillStyle = '#1b1f24'; x.fillRect(w / 2 - len / 2, f / 2 - th / 2, len, th); x.restore();
   }
-  if (harVentil(p) && !dor && ventIRamme(p)) {
+  if (harVentil(p) && ventIRamme(p) && ventPanel) {
+    const [x0, x1, y0] = ventPanel, len = ventL(p) * w / (+p.b || 1000), th = Math.max(3, rw * 0.45);
+    x.save(); x.fillStyle = '#1b1f24'; x.fillRect((x0 + x1) / 2 - len / 2, y0 + rw * 0.5 - th / 2, len, th); x.restore();
+  }
+  if (harVentil(p) && ventIRamme(p) && !ventPanel) {
     const fr = ventFelt(p), f2 = fields.find(q => Math.abs(q.fr[0] - fr[0]) < 1e-6 && Math.abs(q.fr[1] - fr[1]) < 1e-6 && Math.abs(q.fr[2] - fr[2]) < 1e-6);
     if (f2) {
       const [x0, x1, y0] = f2.px, len = ventL(p) * w / (+p.b || 1000), cx = (x0 + x1) / 2, cy = y0 + gap + rw * 0.5, th = Math.max(3, rw * 0.45);
@@ -1611,7 +1618,7 @@ const glasOpbTxt = p => {
 const indlTxt = p => p.type === 'glas' && glasLag(p) !== 1 && INDLAEG[p.indlaeg] ? `Indlægsprofil: ${INDLAEG[p.indlaeg].toLowerCase()}` : '';
 const harSuppl = p => p.type === 'dor' && !panelMode(p) && !!p.dSuppl;
 // ventil: standard 300 mm, i spring af 100 mm, højst 100 mm kortere end rammen (bredeste ramme i øverste række)
-const ventFelt = p => { const L = applyMM(normLines(p.lines), p.b, p.h); const top = fracFields(L).filter(fr => fr[2] < 0.001); return top.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0] || [0, 1, 0, 1]; };
+const ventFelt = p => { if (panelMode(p)) return [0, 1 / panelAntal(p), 0, 1]; const L = applyMM(normLines(p.lines), p.b, p.h); const top = fracFields(L).filter(fr => fr[2] < 0.001); return top.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0] || [0, 1, 0, 1]; };
 const VENT_MAX = 500, VENT_MIN = 200;
 const ventIRamme = p => p.ventPlac === 'ramme';   // standard: i karmen
 const ventMax = p => { const fr = ventIRamme(p) ? ventFelt(p) : [0, 1]; return Math.min(VENT_MAX, Math.max(VENT_MIN, Math.floor(((fr[1] - fr[0]) * (+p.b || 1000) - 100) / 100) * 100)); };
@@ -1882,7 +1889,7 @@ function editPos(s, a, existing) {
   });
   bg.querySelectorAll('input, textarea').forEach(el => el.addEventListener('input', () => { clearTimeout(rt); rt = setTimeout(redraw, 250); }));
   const updVent = () => { const on = bg.querySelector('#eVentil').checked;
-    bg.querySelector('#eVentLWrap').classList.toggle('hidden', !on); bg.querySelector('#eVentPWrap').classList.toggle('hidden', !on || p.type === 'dor');
+    bg.querySelector('#eVentLWrap').classList.toggle('hidden', !on); bg.querySelector('#eVentPWrap').classList.toggle('hidden', !on);
     bg.querySelectorAll('#eVentP button').forEach(b2 => b2.classList.toggle('on', b2.dataset.v === (ventIRamme(p) ? 'ramme' : 'karm')));
     bg.querySelector('#eVentL').value = `${ventL(p)} mm`; };
   bg.querySelectorAll('#eVentP button').forEach(b2 => b2.onclick = () => { p.ventPlac = b2.dataset.v; updVent(); redraw(); });

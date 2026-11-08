@@ -138,7 +138,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.2';
+const APP_VERSION = '0.8.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1609,8 +1609,8 @@ const glasLag = p => [1, 2, 3].includes(+p.gLag) ? +p.gLag : 2;
 const glasLagTxt = p => p.type === 'glas' && p.gLag ? (glasLag(p) === 1 ? '1-lags glas (enkelt glas)' : `${glasLag(p)}-lags glas`) : '';
 // glasopbygning fx "4-16-4 (24 mm)" eller "4-12-4-12-4 (36 mm)"
 const glasOpbTxt = p => {
-  if (p.type !== 'glas') return ''; if (!(p.gUd || p.gMl || p.gInd || p.gMid)) return glasLagTxt(p);
-  const lag = glasLag(p), dele = lag === 1 ? [p.gUd] : lag === 3 ? [p.gUd, p.gMl, p.gMid, p.gMl, p.gInd] : [p.gUd, p.gMl, p.gInd];
+  if (p.type !== 'glas') return ''; if (!(p.gUd || p.gMl || p.gInd || p.gMid || p.gMl2)) return glasLagTxt(p);
+  const lag = glasLag(p), dele = lag === 1 ? [p.gUd] : lag === 3 ? [p.gUd, p.gMl, p.gMid, p.gMl2, p.gInd] : [p.gUd, p.gMl, p.gInd];
   if (lag === 1) return +p.gUd ? `1-lags glas: ${fmtMM(p.gUd)} mm` : glasLagTxt(p);
   const sum = dele.every(v => +v) ? dele.reduce((a, v) => a + +v, 0) : 0;
   return `${lag}-lags glas: ${dele.map(v => +v ? fmtMM(v) : '?').join('-')}${sum ? ` (${fmtMM(sum)} mm)` : ''}`;
@@ -1742,9 +1742,10 @@ function editPos(s, a, existing) {
       <input type="text" id="eRaaType" value="${esc(p.raaType && !RAAGLAS.includes(p.raaType) ? p.raaType : '')}" placeholder="Skriv typen"></div></div>
     <div id="eIndlWrap">
       <label class="f">Glastykkelser</label>
-      <div class="two"><div><label class="f" id="eGUdLbl">Udvendigt glas</label><div class="mm"><input inputmode="decimal" id="eGUd" value="${esc(p.gUd || '')}" placeholder="–"><span>mm</span></div></div><div id="eGMlWrap"><label class="f">Mellemlægsprofil</label><div class="mm"><input inputmode="decimal" id="eGMl" value="${esc(p.gMl || '')}" placeholder="–"><span>mm</span></div></div></div>
+      <div class="two"><div><label class="f" id="eGUdLbl">Udvendigt glas</label><div class="mm"><input inputmode="decimal" id="eGUd" value="${esc(p.gUd || '')}" placeholder="–"><span>mm</span></div></div><div id="eGMlWrap"><label class="f" id="eGMlLbl">Mellemlægsprofil</label><div class="mm"><input inputmode="decimal" id="eGMl" value="${esc(p.gMl || '')}" placeholder="–"><span>mm</span></div></div></div>
       <div class="two"><div id="eGMidWrap"><label class="f">Midterste glas</label><div class="mm"><input inputmode="decimal" id="eGMid" value="${esc(p.gMid || '')}" placeholder="–"><span>mm</span></div></div>
-        <div id="eGIndWrap"><label class="f">Indvendigt glas</label><div class="mm"><input inputmode="decimal" id="eGInd" value="${esc(p.gInd || '')}" placeholder="–"><span>mm</span></div></div></div>
+        <div id="eGMl2Wrap"><label class="f">Mellemlægsprofil 2</label><div class="mm"><input inputmode="decimal" id="eGMl2" value="${esc(p.gMl2 || '')}" placeholder="–"><span>mm</span></div></div></div>
+      <div class="two"><div id="eGIndWrap"><label class="f">Indvendigt glas</label><div class="mm"><input inputmode="decimal" id="eGInd" value="${esc(p.gInd || '')}" placeholder="–"><span>mm</span></div></div><div></div></div>
       <div class="muted" id="eGSum" style="font-size:14px;margin-top:6px"></div>
       <div id="eIndlSel"><label class="f">Farve på indlægsprofil</label>
       <div class="seg" id="eIndl">${Object.entries(INDLAEG).map(([k, v]) => `<button type="button" data-v="${k}" class="${p.indlaeg === k ? 'on' : ''}">${v}</button>`).join('')}</div></div></div>
@@ -1855,7 +1856,7 @@ function editPos(s, a, existing) {
     p.kt = parseMM(bg.querySelector('#eKt').value);
     p.antal = Math.max(1, parseInt(bg.querySelector('#eAnt').value, 10) || 1);
     p.ventil = bg.querySelector('#eVentil').checked;
-    for (const [id, f] of [['#eGUd', 'gUd'], ['#eGMl', 'gMl'], ['#eGMid', 'gMid'], ['#eGInd', 'gInd']]) p[f] = parseMM(bg.querySelector(id).value);
+    for (const [id, f] of [['#eGUd', 'gUd'], ['#eGMl', 'gMl'], ['#eGMid', 'gMid'], ['#eGMl2', 'gMl2'], ['#eGInd', 'gInd']]) p[f] = parseMM(bg.querySelector(id).value);
     p.raa = bg.querySelector('#eRaa').checked;
     p.raaType = !p.raa ? '' : (raaSel === '__andet' ? bg.querySelector('#eRaaType').value.trim() : raaSel);
     p.note = bg.querySelector('#eNote').value.trim();
@@ -2017,14 +2018,15 @@ function editPos(s, a, existing) {
   updStafk();
   const updGlas = () => {
     const lag = glasLag(p); bg.querySelectorAll('#eGLag button').forEach(b2 => b2.classList.toggle('on', !!p.gLag && +b2.dataset.v === lag));
-    bg.querySelector('#eGMidWrap').classList.toggle('hidden', lag !== 3);
+    bg.querySelector('#eGMidWrap').classList.toggle('hidden', lag !== 3); bg.querySelector('#eGMl2Wrap').classList.toggle('hidden', lag !== 3);
+    bg.querySelector('#eGMlLbl').textContent = lag === 3 ? 'Mellemlægsprofil 1' : 'Mellemlægsprofil';
     for (const id of ['#eGMlWrap', '#eGIndWrap', '#eIndlSel']) bg.querySelector(id).classList.toggle('hidden', lag === 1);
     bg.querySelector('#eGUdLbl').textContent = lag === 1 ? 'Glastykkelse' : 'Udvendigt glas';
-    for (const [id, f] of [['#eGUd', 'gUd'], ['#eGMl', 'gMl'], ['#eGMid', 'gMid'], ['#eGInd', 'gInd']]) p[f] = parseMM(bg.querySelector(id).value);
+    for (const [id, f] of [['#eGUd', 'gUd'], ['#eGMl', 'gMl'], ['#eGMid', 'gMid'], ['#eGMl2', 'gMl2'], ['#eGInd', 'gInd']]) p[f] = parseMM(bg.querySelector(id).value);
     bg.querySelector('#eGSum').textContent = glasOpbTxt({ ...p, type: 'glas' });
   };
   bg.querySelectorAll('#eGLag button').forEach(b2 => b2.onclick = () => { p.gLag = +b2.dataset.v; updGlas(); redraw(); });
-  for (const id of ['#eGUd', '#eGMl', '#eGMid', '#eGInd']) bg.querySelector(id).addEventListener('input', updGlas);
+  for (const id of ['#eGUd', '#eGMl', '#eGMid', '#eGMl2', '#eGInd']) bg.querySelector(id).addEventListener('input', updGlas);
   updGlas();
   bg.querySelectorAll('#eIndl button').forEach(b2 => b2.onclick = () => { p.indlaeg = p.indlaeg === b2.dataset.v ? '' : b2.dataset.v; bg.querySelectorAll('#eIndl button').forEach(b3 => b3.classList.toggle('on', b3.dataset.v === p.indlaeg)); redraw(); });
   bg.querySelector('#eTil').addEventListener('change', e => { bg.querySelector('#eTilWrap').classList.toggle('hidden', !e.target.checked); redraw(); });

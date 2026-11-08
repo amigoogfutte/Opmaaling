@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.4';
+const APP_VERSION = '0.8.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1521,7 +1521,7 @@ function renderAdr() {
         ${karmTxt(p) ? `<div class="muted">${karmTxt(p)}</div>` : ''}
         ${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).length ? `<div class="muted">${[stafkTxt(p), symTxt(p), fastTxt(p)].filter(Boolean).join(' · ')}</div>` : ''}
         ${tilTxt(p) ? `<div class="muted">${esc(tilTxt(p))}</div>` : ''}
-        ${glasOpbTxt(p) ? `<div class="muted">${esc(glasOpbTxt(p))}</div>` : ''}
+        ${glasOpbTxt(p) ? `<div class="muted">${esc(glasOpbTxt(p))}</div>` : ''}${lamNote(p) ? `<div style="font-size:12.5px;color:#7a5a00">ℹ︎ ${esc(lamNote(p))}</div>` : ''}
         ${indlTxt(p) ? `<div class="muted">${esc(indlTxt(p))}</div>` : ''}
         ${pladeTxt(p) ? `<div class="muted">${esc(pladeTxt(p))}</div>` : ''}
         ${[...aabningLines(p), ...fyldLines(p)].map(t => `<div class="muted">${esc(t)}</div>`).join('')}
@@ -1609,18 +1609,24 @@ const INDLAEG = { alu: 'Aluminium', sort: 'Sort', lysgraa: 'Lysgrå' };
 // glastype pr. glas: float er standard
 const GLASTYPE = { float: 'Float', haerdet: 'Hærdet', lamineret: 'Lamineret', andet: 'Andet' };
 const gTypeNavn = (p, k) => { const t = p['gT' + k]; return t === 'andet' ? (p['gA' + k] || 'andet') : t && t !== 'float' ? GLASTYPE[t].toLowerCase() : ''; };
+const LAM_MM = 0.35;   // lamineret glas: folien gør glasset 0,35 mm tykkere
+const fmtDec = n => Number((+n).toFixed(2)).toLocaleString('da-DK');
+// forklaring vises kun i appen (ikke i PDF)
+const lamNote = p => { if (p.type !== 'glas') return ''; const lag = glasLag(p), ks = lag === 1 ? ['Ud'] : lag === 3 ? ['Ud', 'Mid', 'Ind'] : ['Ud', 'Ind'];
+  const n = ks.filter(k => p['gT' + k] === 'lamineret').length; return n ? `Lamineret glas er lagt ${fmtDec(LAM_MM)} mm til${n > 1 ? ' pr. glas' : ''}, fordi folien mellem glassene gør det lidt tykkere.` : ''; };
 const glasLag = p => [1, 2, 3].includes(+p.gLag) ? +p.gLag : 2;
 const glasLagTxt = p => p.type === 'glas' && p.gLag ? (glasLag(p) === 1 ? '1-lags glas (enkelt glas)' : `${glasLag(p)}-lags glas`) : '';
 // glasopbygning fx "4-16-4 (24 mm)" eller "4-12-4-12-4 (36 mm)"
 const glasOpbTxt = p => {
   if (p.type !== 'glas') return ''; if (!(p.gUd || p.gMl || p.gInd || p.gMid || p.gMl2 || ['Ud', 'Mid', 'Ind'].some(k => gTypeNavn(p, k)))) return glasLagTxt(p);
-  const lag = glasLag(p), dele = lag === 1 ? [p.gUd] : lag === 3 ? [p.gUd, p.gMl, p.gMid, p.gMl2, p.gInd] : [p.gUd, p.gMl, p.gInd];
-  if (lag === 1) { const t1 = gTypeNavn(p, 'Ud'); return (+p.gUd ? `1-lags glas: ${fmtMM(p.gUd)} mm` : glasLagTxt(p) || '1-lags glas') + (t1 ? `, ${t1}` : ''); }
+  const lag = glasLag(p), gl = k => +p['g' + k] ? +p['g' + k] + (p['gT' + k] === 'lamineret' ? LAM_MM : 0) : 0;   // lamineret: + folie
+  const dele = lag === 1 ? [gl('Ud')] : lag === 3 ? [gl('Ud'), +p.gMl, gl('Mid'), +p.gMl2, gl('Ind')] : [gl('Ud'), +p.gMl, gl('Ind')];
+  if (lag === 1) { const t1 = gTypeNavn(p, 'Ud'); return (+p.gUd ? `1-lags glas: ${fmtDec(gl('Ud'))} mm` : glasLagTxt(p) || '1-lags glas') + (t1 ? `, ${t1}` : ''); }
   const sum = dele.every(v => +v) ? dele.reduce((a, v) => a + +v, 0) : 0;
   const typer = (lag === 3 ? [['Ud', 'udvendigt'], ['Mid', 'midterste'], ['Ind', 'indvendigt']] : [['Ud', 'udvendigt'], ['Ind', 'indvendigt']])
     .map(([k, n]) => gTypeNavn(p, k) ? `${n} ${gTypeNavn(p, k)}` : '').filter(Boolean);
   const tTxt = typer.length ? `, ${typer.join(', ')}` : '';
-  return `${lag}-lags glas: ${dele.map(v => +v ? fmtMM(v) : '?').join('-')}${sum ? ` (${fmtMM(sum)} mm)` : ''}${tTxt}`;
+  return `${lag}-lags glas: ${dele.map(v => +v ? fmtDec(v) : '?').join('-')}${sum ? ` (${fmtDec(sum)} mm)` : ''}${tTxt}`;
 };
 const indlTxt = p => p.type === 'glas' && glasLag(p) !== 1 && INDLAEG[p.indlaeg] ? `Indlægsprofil: ${INDLAEG[p.indlaeg].toLowerCase()}` : '';
 const harSuppl = p => p.type === 'dor' && !panelMode(p) && !!p.dSuppl;
@@ -1758,6 +1764,7 @@ function editPos(s, a, existing) {
         <div class="seg small" id="eGT${k}">${Object.entries(GLASTYPE).map(([v, t]) => `<button type="button" data-v="${v}">${t}</button>`).join('')}</div>
         <input type="text" id="eGTA${k}" class="hidden" style="margin-top:6px" placeholder="Skriv glastype" value="${esc(p['gA' + k] || '')}"></div>`).join('')}
       <div class="muted" id="eGSum" style="font-size:14px;margin-top:8px"></div>
+      <div id="eGLamNote" class="hidden" style="font-size:13px;margin-top:4px;color:#7a5a00;background:#fff6d6;padding:5px 8px;border-radius:6px">ℹ︎</div>
       <div id="eIndlSel"><label class="f">Farve på indlægsprofil</label>
       <div class="seg" id="eIndl">${Object.entries(INDLAEG).map(([k, v]) => `<button type="button" data-v="${k}" class="${p.indlaeg === k ? 'on' : ''}">${v}</button>`).join('')}</div></div></div>
     <div id="eFarveWrap"><label class="f">Farve udvendig</label>
@@ -2043,6 +2050,7 @@ function editPos(s, a, existing) {
     }
     bg.querySelector('#eGTUdLbl').textContent = lag === 1 ? 'Glas' : 'Udvendigt glas';
     bg.querySelector('#eGSum').textContent = glasOpbTxt({ ...p, type: 'glas' });
+    bg.querySelector('#eGLamNote').textContent = lamNote({ ...p, type: 'glas' }); bg.querySelector('#eGLamNote').classList.toggle('hidden', !lamNote({ ...p, type: 'glas' }));
   };
   for (const k of ['Ud', 'Mid', 'Ind']) {
     bg.querySelectorAll(`#eGT${k} button`).forEach(b2 => b2.onclick = () => { p['gT' + k] = b2.dataset.v; updGlas(); redraw(); });

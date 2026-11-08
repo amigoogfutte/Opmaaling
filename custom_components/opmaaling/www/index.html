@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.8.8';
+const APP_VERSION = '0.8.9';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -193,13 +193,52 @@ function save(skipSync) {
   clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set(data), 150);
   if (!skipSync) scheduleSync(2500);
 }
-const touch = s => { s.updated = Date.now(); if (data.firma) s.firma = data.firma; };
+const touch = s => { s.updated = Date.now(); if (data.firma) s.firma = data.firma; if (data.firmaLogo !== undefined) { s.firmaLogo = data.firmaLogo; s.kunLogo = !!data.kunLogo; } };
+// logo og "kun logo" følger også med sagerne til andre enheder, hvis det ikke er sat her
+const nyesteSag = k => [...(data.sager || [])].filter(s => s[k] !== undefined).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
+const firmaLogo = () => data.firmaLogo !== undefined ? data.firmaLogo : ((nyesteSag('firmaLogo') || {}).firmaLogo || '');
+const kunLogo = () => data.firmaLogo !== undefined ? !!data.kunLogo : !!(nyesteSag('firmaLogo') || {}).kunLogo;
 // firmanavn: skrives én gang og gemmes; følger med sagerne, så det også kommer frem på andre enheder
 const firmaNavn = () => data.firma || ([...(data.sager || [])].filter(s => s.firma).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0] || {}).firma || '';
-async function retFirma() {
-  const r = await formDialog('Firmanavn', [['Firmanavn (står på PDF)', firmaNavn(), 'Fx Jensens Vinduer ApS']], 'Gem');
-  if (r === null || r === undefined) return;
-  data.firma = (r[0] || '').trim(); save(); render(); toast(data.firma ? 'Firmanavn gemt' : 'Firmanavn fjernet');
+// firmalogo gemmes på denne enhed (som billede); 'kunLogo' = vis kun logoet på PDF, ikke navnet
+function retFirma() {
+  return new Promise(resolve => {
+    const bg = document.createElement('div'); bg.className = 'dialog-bg';
+    let logo = firmaLogo(), kun = kunLogo();
+    bg.innerHTML = `<div class="dialog" style="max-width:420px;width:100%">
+      <div style="font-weight:700;font-size:18px;margin-bottom:8px">Firma</div>
+      <label class="f">Firmanavn (står på PDF)</label><input type="text" id="fiNavn" value="${esc(firmaNavn())}" placeholder="Fx Jensens Vinduer ApS">
+      <label class="f">Logo</label>
+      <div id="fiPrev" style="background:#fff;border:1px solid #dfe3e8;border-radius:10px;min-height:60px;display:flex;align-items:center;justify-content:center;padding:8px"></div>
+      <div class="btns" style="margin-top:8px"><button class="btn sec small" id="fiVaelg">🖼 Vælg logo</button><button class="btn danger small" id="fiFjern">Fjern logo</button></div>
+      <input type="file" id="fiFil" accept="image/*" class="hidden">
+      <label class="check" id="fiKunRow" style="margin-top:8px"><input type="checkbox" id="fiKun"> Vis kun logoet på PDF (ikke navnet)</label>
+      <div class="btns" style="margin-top:12px"><button class="btn sec" id="fiNo">Annuller</button><button class="btn" id="fiOk">Gem</button></div></div>`;
+    document.body.appendChild(bg);
+    const upd = () => {
+      bg.querySelector('#fiPrev').innerHTML = logo ? `<img src="${logo}" style="max-width:100%;max-height:90px">` : '<span class="muted">Intet logo</span>';
+      bg.querySelector('#fiFjern').classList.toggle('hidden', !logo); bg.querySelector('#fiKunRow').classList.toggle('hidden', !logo);
+      bg.querySelector('#fiKun').checked = kun;
+    };
+    upd();
+    bg.querySelector('#fiVaelg').onclick = () => bg.querySelector('#fiFil').click();
+    bg.querySelector('#fiFil').onchange = e => {
+      const f = e.target.files[0]; if (!f) return;
+      const rd = new FileReader(); rd.onload = () => { const im = new Image(); im.onload = () => {
+        // gør logoet mindre (højst 800 px bredt), men bevar gennemsigtighed
+        const sc = Math.min(1, 600 / im.naturalWidth, 200 / im.naturalHeight), c = document.createElement('canvas');
+        c.width = Math.round(im.naturalWidth * sc); c.height = Math.round(im.naturalHeight * sc); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        logo = c.toDataURL('image/png'); upd(); }; im.src = rd.result; }; rd.readAsDataURL(f);
+    };
+    bg.querySelector('#fiFjern').onclick = () => { logo = ''; kun = false; upd(); };
+    bg.querySelector('#fiKun').onchange = e => { kun = e.target.checked; };
+    const luk = () => { bg.remove(); resolve(); };
+    bg.querySelector('#fiNo').onclick = luk;
+    bg.querySelector('#fiOk').onclick = () => {
+      data.firma = bg.querySelector('#fiNavn').value.trim(); data.firmaLogo = logo; data.kunLogo = !!logo && kun;
+      save(); luk(); render(); toast('Firma gemt');
+    };
+  });
 }
 const liveSager = () => data.sager.filter(s => !s.deleted);
 
@@ -1433,7 +1472,7 @@ function renderHome() {
   $('#arkBtn').onclick = () => { view = { name: 'arkiv' }; render(); };
   const list = liveSager().filter(s => !s.arkiveret).sort((a, b) => (b.updated || 0) - (a.updated || 0));
   $('#main').innerHTML = syncBarHTML() + (onClaude ? `<div class="warn">Dette er en prøveudgave. Data, du indtaster her, kan forsvinde. Brug appen fra hjemmeskærmen til rigtige opmålinger.</div>` : '') +
-    `<div class="card row" style="padding:9px 12px;margin-bottom:10px"><div class="grow"><div class="muted" style="font-size:12.5px">Firma</div><div style="font-weight:600">${firmaNavn() ? esc(firmaNavn()) : '<span style="color:#c0392b">Ikke angivet – tryk Ret</span>'}</div></div>
+    `<div class="card row" style="padding:9px 12px;margin-bottom:10px"><div class="grow"><div class="muted" style="font-size:12.5px">Firma</div><div style="font-weight:600">${firmaLogo() ? `<img src="${firmaLogo()}" style="max-height:34px;max-width:100%;display:block;margin:2px 0">` : ''}${firmaLogo() && kunLogo() ? '' : firmaNavn() ? esc(firmaNavn()) : firmaLogo() ? '' : '<span style="color:#c0392b">Ikke angivet – tryk Ret</span>'}</div></div>
       <button class="btn sec small" id="retFirma" style="width:auto;padding:8px 14px">✏️ Ret</button></div>` +
     (list.length > 4 ? searchHTML('Søg sagsnummer, kunde eller adresse') : '') + `<div id="sagList"></div>`;
   $('#retFirma').onclick = retFirma;
@@ -2228,9 +2267,18 @@ async function makePDF(s, only, navn) {
   y = 12; text(kunGlas ? 'Glasopmåling' : 'Vinduesopmåling', M, 18, 'bold', [255, 255, 255]);
   y = 20; text(`${sagLabel(s)}${s.navn ? ' – ' + s.navn : ''}`, M, 11, 'normal', [255, 255, 255]);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(255, 255, 255);
-  const firma = firmaNavn() || s.firma;
-  if (firma) { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text(firma, PW - M, 12, { align: 'right' }); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
-  doc.text(`Dato: ${new Date().toLocaleDateString('da-DK')}`, PW - M, firma ? 20 : 12, { align: 'right' });
+  const logoUrl = firmaLogo(), firma = logoUrl && kunLogo() ? '' : (firmaNavn() || s.firma);
+  let hoejre = PW - M;
+  if (logoUrl) {   // logo i en hvid boks øverst til højre
+    try {
+      const ip = doc.getImageProperties(logoUrl), bh = 18, lh = 14, lw = Math.min(70, lh * ip.width / ip.height), bw = lw + 6;
+      doc.setFillColor(255, 255, 255); doc.roundedRect(PW - M - bw, 4, bw, bh, 2, 2, 'F');
+      doc.addImage(logoUrl, 'PNG', PW - M - bw + 3, 4 + (bh - lw * ip.height / ip.width) / 2, lw, lw * ip.height / ip.width);
+      hoejre = PW - M - bw - 4;
+    } catch (e) { console.warn('logo', e); }
+  }
+  if (firma) { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text(firma, hoejre, 12, { align: 'right' }); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
+  doc.text(`Dato: ${new Date().toLocaleDateString('da-DK')}`, hoejre, firma || logoUrl ? 20 : 12, { align: 'right' });
   y = 36;
   text(only ? `Adresse: ${only.adresse}` : `${adrs.length} adresse${adrs.length === 1 ? '' : 'r'}`, M, 11, 'bold');
   if (s.lev) { y += 6; text(`Leveres: ${s.lev}`, M, 11, 'bold'); }

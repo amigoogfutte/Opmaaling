@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1615,6 +1615,7 @@ async function hentBrugere() {
 }
 const brugerNavn = id => (brugere.find(u => u.id === id) || {}).navn || 'anden bruger';
 const kanDele = s => mig && (mig.admin || (s.ejer && s.ejer === mig.id) || !s.ejer);
+const kanSlette = s => !HA || !mig || kanDele(s);
 const delingTxt = s => {
   if (!mig) return '';
   if (s.ejer && s.ejer !== mig.id) return `👥 Oprettet af ${brugerNavn(s.ejer)}`;
@@ -1818,8 +1819,9 @@ function sagMenu(s) {
       touch(s); save(); render(); toast('Alle positioner er nummereret');
     }, 'Nummerér alle positioner forfra (1, 2, 3 …)'],
     [() => arkiver(s, !s.arkiveret), s.arkiveret ? 'Genåbn sag' : 'Arkivér sag'],
-    [async () => { if (await dialog({ text: `Slet ${sagLabel(s)} med alle adresser og ${allPos(s).length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
+    kanSlette(s) ? [async () => { if (await dialog({ text: `Slet ${sagLabel(s)} med alle adresser og ${allPos(s).length} positioner? Det kan ikke fortrydes.`, ok: 'Slet', danger: true })) {
       s.deleted = true; s.adresser = []; s.pos = []; touch(s); save(); view = { name: s.arkiveret ? 'arkiv' : 'home' }; render(); } }, 'Slet sag', 'danger']
+      : [() => dialog({ text: `${sagLabel(s)} er delt med dig af ${brugerNavn(s.ejer)}. Kun den, der har oprettet sagen, eller en administrator kan slette den.`, ok: 'OK', cancel: false }), '🔒 Slet sag (kun opretter / administrator)']
   ]);
 }
 function adrMenu(s, a) {

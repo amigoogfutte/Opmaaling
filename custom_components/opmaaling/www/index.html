@@ -140,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -207,7 +207,7 @@ const firmaNavn = () => sf() ? sf().navn || '' : data.firma || ([...(data.sager 
 // kun administratorer kan rette firma; det sendes til Home Assistant og vises hos alle brugere
 const kanRetteFirma = () => !HA || (mig && mig.admin);
 async function sendFirma() {
-  try { const r = await api('firma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data.serverFirma) }); if (!r.ok) toast('Firma kunne ikke gemmes i Home Assistant'); } catch (e) { /* prøves igen ved næste synkronisering */ data.firmaVent = true; }
+  try { const r = await api('firma', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data.serverFirma) }); if (!r.ok) toast('Firma kunne ikke gemmes på serveren'); } catch (e) { /* prøves igen ved næste synkronisering */ data.firmaVent = true; }
 }
 async function hentFirma() {
   try {
@@ -2906,7 +2906,7 @@ async function sync() {
     setSync('ok');
   } catch (e) {
     if (e.login) setSync('login');
-    else if (e.missing) setSync('error', 'Integrationen svarer ikke i Home Assistant');
+    else if (e.missing) setSync('error', 'Serveren svarer ikke');
     else setSync(navigator.onLine ? 'error' : 'offline', navigator.onLine ? 'Kunne ikke synkronisere' : '');
   } finally {
     syncing = false;
@@ -2934,8 +2934,8 @@ function syncText() {
   const t = syncState.last ? new Date(syncState.last).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }) : '';
   switch (syncState.status) {
     case 'busy': return ['busy', 'Synkroniserer …'];
-    case 'ok': return ['ok', 'Synkroniseret med Home Assistant ' + t];
-    case 'login': return ['login', 'Ikke logget ind – tryk her for at logge ind i Home Assistant'];
+    case 'ok': return ['ok', 'Synkroniseret med server ' + t];
+    case 'login': return ['login', 'Ikke logget ind – tryk her for at logge ind på serveren'];
     case 'offline': return ['offline', 'Ingen forbindelse – gemmes på telefonen og synkroniseres senere'];
     case 'error': return ['error', (syncState.msg || 'Kunne ikke synkronisere') + ' – tryk for at prøve igen'];
     default: return ['busy', 'Forbinder …'];

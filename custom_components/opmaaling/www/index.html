@@ -139,7 +139,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.2';
+const APP_VERSION = '0.9.3';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1700,6 +1700,14 @@ const farveDel = (navn, k, r, ens) => {
   return `Farve ${navn}: karm ${k || '–'}, ramme ${r}`;
 };
 const farveTxt = p => p.type === 'glas' ? [] : [farveDel('ude', p.fuK, p.fuR, p.fuEns !== false), farveDel('inde', p.fiK, p.fiR, p.fiEns !== false)].filter(Boolean);
+// træfarver/træsorter: må ikke vælges udvendigt på træ/alu, og slet ikke på PVC
+const erTraeFarve = f => /træ|\btrae\b|teak|mahogni|mahogany|\beg\b|^eg[ -]|fyrretræ|\bfyr\b|lærk|ceder|oregon|valnød/i.test(String(f || ''));
+const farveTilladt = (mat, side) => f => !erTraeFarve(f) || (mat === 'trae' || !mat) || (mat === 'traealu' && side === 'inde');
+const farveFejl = p => { const m = p.mat; if (p.type === 'glas' || !m || m === 'trae') return '';
+  const ud = [p.fuK, p.fuEns !== false ? '' : p.fuR].filter(Boolean).filter(f => erTraeFarve(f)), ind = [p.fiK, p.fiEns !== false ? '' : p.fiR].filter(Boolean).filter(f => erTraeFarve(f));
+  if (m === 'pvc' && (ud.length || ind.length)) return 'PVC kan kun have farver – ikke træ.';
+  if (m === 'traealu' && ud.length) return 'Træ/alu er aluminium udvendigt – vælg en farve udvendigt, ikke træ.';
+  return ''; };
 const FARVER = ['Hvid', 'Hvid RAL 9010', 'Grå RAL 7035', 'Hvid RAL 9016', 'Cremehvid RAL 9001', 'Antracitgrå RAL 7016', 'Sort RAL 9005', 'Rå træ', 'Teak', 'Mahogni'];
 const sketchExtra = p => {
   const a = [];
@@ -1823,20 +1831,21 @@ function editPos(s, a, existing) {
     <div id="eFarveWrap"><label class="f">Farve udvendig</label>
     <div class="two">
       <div><label class="f" id="eFuKLbl" style="margin-top:0">${p.fuEns !== false ? 'Karm og ramme' : 'Karm'}</label>
-        <input type="text" id="eFuK" list="farveList" value="${esc(p.fuK || '')}" placeholder="Fx hvid"></div>
+        <input type="text" id="eFuK" list="farveListUd" value="${esc(p.fuK || '')}" placeholder="Fx hvid"></div>
       <div id="eFuRWrap" class="${p.fuEns !== false ? 'hidden' : ''}"><label class="f" style="margin-top:0">Ramme</label>
-        <input type="text" id="eFuR" list="farveList" value="${esc(p.fuR || '')}" placeholder="Fx hvid"></div>
+        <input type="text" id="eFuR" list="farveListUd" value="${esc(p.fuR || '')}" placeholder="Fx hvid"></div>
     </div>
     <label class="check small"><input type="checkbox" id="eFuEns" ${p.fuEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
     <label class="f">Farve indvendig</label>
     <div class="two">
       <div><label class="f" id="eFiKLbl" style="margin-top:0">${p.fiEns !== false ? 'Karm og ramme' : 'Karm'}</label>
-        <input type="text" id="eFiK" list="farveList" value="${esc(p.fiK || '')}" placeholder="Fx hvid"></div>
+        <input type="text" id="eFiK" list="farveListInd" value="${esc(p.fiK || '')}" placeholder="Fx hvid"></div>
       <div id="eFiRWrap" class="${p.fiEns !== false ? 'hidden' : ''}"><label class="f" style="margin-top:0">Ramme</label>
-        <input type="text" id="eFiR" list="farveList" value="${esc(p.fiR || '')}" placeholder="Fx hvid"></div>
+        <input type="text" id="eFiR" list="farveListInd" value="${esc(p.fiR || '')}" placeholder="Fx hvid"></div>
     </div>
-    <label class="check small"><input type="checkbox" id="eFiEns" ${p.fiEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label></div>
-    <datalist id="farveList">${[...new Set([...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))].map(f => `<option value="${esc(f)}">`).join('')}</datalist>
+    <label class="check small"><input type="checkbox" id="eFiEns" ${p.fiEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
+    <div id="eFarveFejl" class="hidden" style="color:#c0392b;font-weight:600;font-size:14px;margin-top:4px"></div></div>
+    <datalist id="farveListUd"></datalist><datalist id="farveListInd"></datalist>
     <label class="f">Billede</label>
     <div class="photo-btns">
       <label class="btn sec small" for="fileCam">📷 Tag billede</label>
@@ -2035,6 +2044,7 @@ function editPos(s, a, existing) {
   const doSave = async () => {
     read();
     if (!p.b || !p.h) { toast('Udfyld bredde og højde'); return; }
+    if (farveFejl(p)) { toast(farveFejl(p)); bg.querySelector('#eFarveFejl').scrollIntoView({ block: 'center' }); return; }
     const dup = (s.adresser || []).map(ad => [ad, ad.pos.find(q => q.id !== p.id && q.nr === p.nr)]).find(([, q]) => q);
     if (dup && !(await dialog({ text: `Pos. ${p.nr} bruges allerede på ${dup[0].adresse}. Gem alligevel med samme nummer?`, ok: 'Gem alligevel' }))) return;
     const i = a.pos.findIndex(q => q.id === p.id);
@@ -2111,7 +2121,18 @@ function editPos(s, a, existing) {
     bg.querySelectorAll(`#eGT${k} button`).forEach(b2 => b2.onclick = () => { p['gT' + k] = b2.dataset.v; updGlas(); redraw(); });
     bg.querySelector(`#eGTA${k}`).addEventListener('input', updGlas);
   }
-  bg.querySelectorAll('#eMat button').forEach(b2 => b2.onclick = () => { p.mat = b2.dataset.v; bg.querySelectorAll('#eMat button').forEach(b3 => b3.classList.toggle('on', b3.dataset.v === p.mat)); redraw(); });
+  const alleFarver = [...new Set([...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))];
+  const updFarver = () => {
+    for (const [id, side] of [['#farveListUd', 'ude'], ['#farveListInd', 'inde']])
+      bg.querySelector(id).innerHTML = alleFarver.filter(farveTilladt(p.mat, side)).map(f => `<option value="${esc(f)}">`).join('');
+    const q = { ...p, fuK: bg.querySelector('#eFuK').value, fuR: bg.querySelector('#eFuR').value, fiK: bg.querySelector('#eFiK').value, fiR: bg.querySelector('#eFiR').value,
+      fuEns: bg.querySelector('#eFuEns').checked, fiEns: bg.querySelector('#eFiEns').checked };
+    const fejl = farveFejl(q), el = bg.querySelector('#eFarveFejl'); el.textContent = fejl ? '⚠︎ ' + fejl : ''; el.classList.toggle('hidden', !fejl);
+  };
+  for (const id of ['#eFuK', '#eFuR', '#eFiK', '#eFiR']) bg.querySelector(id).addEventListener('input', updFarver);
+  for (const id of ['#eFuEns', '#eFiEns']) bg.querySelector(id).addEventListener('change', updFarver);
+  updFarver();
+  bg.querySelectorAll('#eMat button').forEach(b2 => b2.onclick = () => { p.mat = b2.dataset.v; bg.querySelectorAll('#eMat button').forEach(b3 => b3.classList.toggle('on', b3.dataset.v === p.mat)); updFarver(); redraw(); });
   bg.querySelectorAll('#eGLag button').forEach(b2 => b2.onclick = () => { p.gLag = +b2.dataset.v; updGlas(); redraw(); });
   for (const id of ['#eGUd', '#eGMl', '#eGMid', '#eGMl2', '#eGInd']) bg.querySelector(id).addEventListener('input', updGlas);
   updGlas();

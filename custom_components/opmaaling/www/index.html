@@ -58,9 +58,10 @@
     max-width: 696px; margin: 0 auto; z-index: 6; box-shadow: 0 4px 14px rgba(31,95,168,.35); }
   .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
   label.f { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 4px; }
-  input[type=text], input[type=number], input[inputmode], textarea {
+  input[type=text], input[type=number], input[inputmode], textarea, select.farve {
     width: 100%; font-size: 18px; padding: 12px; border: 1px solid #cfd5dd; border-radius: 10px; background: #fff;
     font-family: inherit; color: var(--text); }
+  select.farve { -webkit-appearance: none; appearance: none; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23667' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right: 32px; }
   textarea { min-height: 70px; resize: vertical; }
   input:focus, textarea:focus { outline: 2px solid var(--blue); border-color: transparent; }
   .mm { position: relative; }
@@ -139,7 +140,7 @@
 
 <script>
 "use strict";
-const APP_VERSION = '0.9.3';
+const APP_VERSION = '0.9.4';
 /* ============ Data og lagring ============ */
 let data = { sager: [] };
 let view = { name: 'home', sagId: null };
@@ -1831,21 +1832,21 @@ function editPos(s, a, existing) {
     <div id="eFarveWrap"><label class="f">Farve udvendig</label>
     <div class="two">
       <div><label class="f" id="eFuKLbl" style="margin-top:0">${p.fuEns !== false ? 'Karm og ramme' : 'Karm'}</label>
-        <input type="text" id="eFuK" list="farveListUd" value="${esc(p.fuK || '')}" placeholder="Fx hvid"></div>
+        <select class="farve" id="eFuKSel"></select><input type="text" id="eFuK" class="hidden" style="margin-top:6px" value="${esc(p.fuK || '')}" placeholder="Skriv farven"></div>
       <div id="eFuRWrap" class="${p.fuEns !== false ? 'hidden' : ''}"><label class="f" style="margin-top:0">Ramme</label>
-        <input type="text" id="eFuR" list="farveListUd" value="${esc(p.fuR || '')}" placeholder="Fx hvid"></div>
+        <select class="farve" id="eFuRSel"></select><input type="text" id="eFuR" class="hidden" style="margin-top:6px" value="${esc(p.fuR || '')}" placeholder="Skriv farven"></div>
     </div>
     <label class="check small"><input type="checkbox" id="eFuEns" ${p.fuEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
     <label class="f">Farve indvendig</label>
     <div class="two">
       <div><label class="f" id="eFiKLbl" style="margin-top:0">${p.fiEns !== false ? 'Karm og ramme' : 'Karm'}</label>
-        <input type="text" id="eFiK" list="farveListInd" value="${esc(p.fiK || '')}" placeholder="Fx hvid"></div>
+        <select class="farve" id="eFiKSel"></select><input type="text" id="eFiK" class="hidden" style="margin-top:6px" value="${esc(p.fiK || '')}" placeholder="Skriv farven"></div>
       <div id="eFiRWrap" class="${p.fiEns !== false ? 'hidden' : ''}"><label class="f" style="margin-top:0">Ramme</label>
-        <input type="text" id="eFiR" list="farveListInd" value="${esc(p.fiR || '')}" placeholder="Fx hvid"></div>
+        <select class="farve" id="eFiRSel"></select><input type="text" id="eFiR" class="hidden" style="margin-top:6px" value="${esc(p.fiR || '')}" placeholder="Skriv farven"></div>
     </div>
     <label class="check small"><input type="checkbox" id="eFiEns" ${p.fiEns !== false ? 'checked' : ''}> Samme farve på karm og ramme</label>
     <div id="eFarveFejl" class="hidden" style="color:#c0392b;font-weight:600;font-size:14px;margin-top:4px"></div></div>
-    <datalist id="farveListUd"></datalist><datalist id="farveListInd"></datalist>
+
     <label class="f">Billede</label>
     <div class="photo-btns">
       <label class="btn sec small" for="fileCam">📷 Tag billede</label>
@@ -2122,17 +2123,33 @@ function editPos(s, a, existing) {
     bg.querySelector(`#eGTA${k}`).addEventListener('input', updGlas);
   }
   const alleFarver = [...new Set([...liveSager().flatMap(x => allPos(x).flatMap(q => [q.fuK, q.fuR, q.fiK, q.fiR])), ...FARVER].filter(Boolean))];
-  const updFarver = () => {
-    for (const [id, side] of [['#farveListUd', 'ude'], ['#farveListInd', 'inde']])
-      bg.querySelector(id).innerHTML = alleFarver.filter(farveTilladt(p.mat, side)).map(f => `<option value="${esc(f)}">`).join('');
+  // dropdown pr. farvefelt; "Anden farve…" viser et tekstfelt. Træ er ikke med, hvor det ikke er tilladt.
+  const fSel = [['FuK', 'ude'], ['FuR', 'ude'], ['FiK', 'inde'], ['FiR', 'inde']];
+  const byggSel = () => {
+    for (const [k, side] of fSel) {
+      const inp = bg.querySelector(`#e${k}`), sel = bg.querySelector(`#e${k}Sel`), tilladt = alleFarver.filter(farveTilladt(p.mat, side));
+      let v = inp.value.trim();
+      if (v && erTraeFarve(v) && !farveTilladt(p.mat, side)(v)) { v = ''; inp.value = ''; }   // træ forsvinder, når det ikke er tilladt
+      const anden = v && !tilladt.includes(v) || sel.value === '__anden';
+      sel.innerHTML = `<option value="">– Vælg farve –</option>` + tilladt.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('') + `<option value="__anden">Anden farve…</option>`;
+      sel.value = anden ? '__anden' : v; inp.classList.toggle('hidden', !anden);
+    }
+  };
+  for (const [k] of fSel) bg.querySelector(`#e${k}Sel`).addEventListener('change', e => {
+    const inp = bg.querySelector(`#e${k}`), v = e.target.value;
+    if (v === '__anden') { inp.value = ''; inp.classList.remove('hidden'); inp.focus(); } else { inp.value = v; inp.classList.add('hidden'); }
+    updFarver(); clearTimeout(rt); rt = setTimeout(redraw, 150);
+  });
+  const updFarver = (bygg) => {
+    if (bygg) byggSel();
     const q = { ...p, fuK: bg.querySelector('#eFuK').value, fuR: bg.querySelector('#eFuR').value, fiK: bg.querySelector('#eFiK').value, fiR: bg.querySelector('#eFiR').value,
       fuEns: bg.querySelector('#eFuEns').checked, fiEns: bg.querySelector('#eFiEns').checked };
     const fejl = farveFejl(q), el = bg.querySelector('#eFarveFejl'); el.textContent = fejl ? '⚠︎ ' + fejl : ''; el.classList.toggle('hidden', !fejl);
   };
-  for (const id of ['#eFuK', '#eFuR', '#eFiK', '#eFiR']) bg.querySelector(id).addEventListener('input', updFarver);
-  for (const id of ['#eFuEns', '#eFiEns']) bg.querySelector(id).addEventListener('change', updFarver);
-  updFarver();
-  bg.querySelectorAll('#eMat button').forEach(b2 => b2.onclick = () => { p.mat = b2.dataset.v; bg.querySelectorAll('#eMat button').forEach(b3 => b3.classList.toggle('on', b3.dataset.v === p.mat)); updFarver(); redraw(); });
+  for (const id of ['#eFuK', '#eFuR', '#eFiK', '#eFiR']) bg.querySelector(id).addEventListener('input', () => updFarver());
+  for (const id of ['#eFuEns', '#eFiEns']) bg.querySelector(id).addEventListener('change', () => updFarver());
+  updFarver(true);
+  bg.querySelectorAll('#eMat button').forEach(b2 => b2.onclick = () => { p.mat = b2.dataset.v; bg.querySelectorAll('#eMat button').forEach(b3 => b3.classList.toggle('on', b3.dataset.v === p.mat)); updFarver(true); redraw(); });
   bg.querySelectorAll('#eGLag button').forEach(b2 => b2.onclick = () => { p.gLag = +b2.dataset.v; updGlas(); redraw(); });
   for (const id of ['#eGUd', '#eGMl', '#eGMid', '#eGMl2', '#eGInd']) bg.querySelector(id).addEventListener('input', updGlas);
   updGlas();
